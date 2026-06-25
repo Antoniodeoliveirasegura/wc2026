@@ -190,6 +190,23 @@ def simulate_knockouts(qual_idx, alive_idx, A, n_sims=N_SIMS):
 # ----------------------------------------------------------------- score predictions
 PRED_FILE = os.path.join(os.path.dirname(__file__), "predictions.json")
 
+FLAG = {
+    "Spain": "es", "Argentina": "ar", "England": "gb-eng", "Brazil": "br", "France": "fr",
+    "Portugal": "pt", "Germany": "de", "Netherlands": "nl", "Belgium": "be", "Colombia": "co",
+    "Morocco": "ma", "Switzerland": "ch", "Croatia": "hr", "Uruguay": "uy", "Norway": "no",
+    "Japan": "jp", "Mexico": "mx", "United States": "us", "Canada": "ca", "Australia": "au",
+    "Ecuador": "ec", "Senegal": "sn", "Iran": "ir", "South Korea": "kr", "Egypt": "eg",
+    "Ghana": "gh", "Ivory Coast": "ci", "Algeria": "dz", "Tunisia": "tn", "Cape Verde": "cv",
+    "DR Congo": "cd", "Curaçao": "cw", "Haiti": "ht", "Paraguay": "py", "Qatar": "qa",
+    "Saudi Arabia": "sa", "Uzbekistan": "uz", "Jordan": "jo", "Iraq": "iq", "Panama": "pa",
+    "Scotland": "gb-sct", "New Zealand": "nz", "South Africa": "za", "Czech Republic": "cz",
+    "Turkey": "tr", "Austria": "at", "Sweden": "se", "Bosnia and Herzegovina": "ba",
+}
+
+def flag(team):
+    iso = FLAG.get(team)
+    return f'<img src="https://flagcdn.com/24x18/{iso}.png" width="20" height="15" alt="">' if iso else ""
+
 def predict_score(m, zmap, confmap, a, b):
     """Most-likely exact scoreline (argmax of the squad-value-adjusted DC score grid)."""
     M = wc.score_matrix(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, neutral=True, maxg=MAXG)
@@ -233,8 +250,8 @@ def render_preds(preds):
         return "<p style='color:var(--muted);font-size:13px;margin:0'>No upcoming games to predict yet.</p>"
     out = []
     for r in preds:
-        match = (f'<span class="mt">{r["a"]}</span> <span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
-                 f'<span class="mt">{r["b"]}</span>')
+        match = (f'<span class="mt">{flag(r["a"])}{r["a"]}</span> <span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
+                 f'<span class="mt">{flag(r["b"])}{r["b"]}</span>')
         if not r["played"]:
             badge = '<span class="badge b-pend">upcoming</span>'
         elif r["correct"]:
@@ -266,7 +283,10 @@ h2{font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;le
 .bar{display:grid;grid-template-columns:118px 1fr 50px;align-items:center;gap:12px;font-size:14px}
 .bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .track{background:#21262d;border-radius:6px;height:22px;overflow:hidden}
-.fill{background:linear-gradient(90deg,#2563eb,#3b82f6);height:100%;border-radius:6px}
+.fill{display:block;background:linear-gradient(90deg,#2563eb,#60a5fa);height:100%;border-radius:6px}
+.nm img,td img,.mt img{border-radius:2px;vertical-align:-2px;margin-right:7px;box-shadow:0 0 0 .5px rgba(255,255,255,.12)}
+tbody tr{transition:background .12s}tbody tr:hover{background:rgba(255,255,255,.04)}
+.card{transition:border-color .15s}
 .v{text-align:right;font-variant-numeric:tabular-nums}
 table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
@@ -301,11 +321,11 @@ def write_site(teams, order, R, n_sims, phase, preds, path):
     pc = lambda c, i: f"{c[i] / n_sims:.1%}" if c[i] else "—"
     mx = max(1, champ[order[0]])
     bars = "".join(
-        f'<div class="bar"><span class="nm">{teams[i]}</span>'
+        f'<div class="bar"><span class="nm">{flag(teams[i])}{teams[i]}</span>'
         f'<span class="track"><span class="fill" style="width:{champ[i]/mx*100:.0f}%"></span></span>'
         f'<span class="v">{pc(champ, i)}</span></div>' for i in order[:12])
     rows = "".join(
-        f"<tr><td>{teams[i]}</td><td>{pc(R['qualify'],i)}</td><td>{pc(champ,i)}</td>"
+        f"<tr><td>{flag(teams[i])}{teams[i]}</td><td>{pc(R['qualify'],i)}</td><td>{pc(champ,i)}</td>"
         f"<td>{pc(R['final'],i)}</td><td>{pc(R['sf'],i)}</td><td>{pc(R['r16'],i)}</td></tr>"
         for i in order)
     sub = ("Dixon-Coles + connectivity-weighted squad value &middot; simulates the rest "
