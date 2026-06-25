@@ -1,0 +1,170 @@
+{
+ "Czech Republic|Mexico": {
+  "pred": {
+   "Czech Republic": 1,
+   "Mexico": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "South Africa|South Korea": {
+  "pred": {
+   "South Africa": 0,
+   "South Korea": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Australia|Paraguay": {
+  "pred": {
+   "Australia": 0,
+   "Paraguay": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Turkey|United States": {
+  "pred": {
+   "Turkey": 1,
+   "United States": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Bosnia and Herzegovina|Qatar": {
+  "pred": {
+   "Bosnia and Herzegovina": 1,
+   "Qatar": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Canada|Switzerland": {
+  "pred": {
+   "Canada": 0,
+   "Switzerland": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Brazil|Scotland": {
+  "pred": {
+   "Brazil": 2,
+   "Scotland": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Haiti|Morocco": {
+  "pred": {
+   "Haiti": 0,
+   "Morocco": 2
+  },
+  "locked": "2026-06-25"
+ },
+ "Japan|Sweden": {
+  "pred": {
+   "Japan": 1,
+   "Sweden": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Netherlands|Tunisia": {
+  "pred": {
+   "Netherlands": 2,
+   "Tunisia": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Curaçao|Ivory Coast": {
+  "pred": {
+   "Curaçao": 0,
+   "Ivory Coast": 2
+  },
+  "locked": "2026-06-25"
+ },
+ "Ecuador|Germany": {
+  "pred": {
+   "Ecuador": 0,
+   "Germany": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Cape Verde|Saudi Arabia": {
+  "pred": {
+   "Cape Verde": 0,
+   "Saudi Arabia": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Spain|Uruguay": {
+  "pred": {
+   "Spain": 1,
+   "Uruguay": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Belgium|New Zealand": {
+  "pred": {
+   "Belgium": 3,
+   "New Zealand": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Egypt|Iran": {
+  "pred": {
+   "Egypt": 0,
+   "Iran": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "France|Norway": {
+  "pred": {
+   "France": 1,
+   "Norway": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Iraq|Senegal": {
+  "pred": {
+   "Iraq": 0,
+   "Senegal": 2
+  },
+  "locked": "2026-06-25"
+ },
+ "Algeria|Austria": {
+  "pred": {
+   "Algeria": 1,
+   "Austria": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "Argentina|Jordan": {
+  "pred": {
+   "Argentina": 3,
+   "Jordan": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Colombia|Portugal": {
+  "pred": {
+   "Colombia": 1,
+   "Portugal": 1
+  },
+  "locked": "2026-06-25"
+ },
+ "DR Congo|Uzbekistan": {
+  "pred": {
+   "DR Congo": 0,
+   "Uzbekistan": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "Croatia|Ghana": {
+  "pred": {
+   "Croatia": 1,
+   "Ghana": 0
+  },
+  "locked": "2026-06-25"
+ },
+ "England|Panama": {
+  "pred": {
+   "England": 3,
+   "Panama": 0
+  },
+  "locked": "2026-06-25"
+ }
+}

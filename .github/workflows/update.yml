@@ -19,5 +19,5 @@ jobs:
         run: |
           git config user.name "wc2026-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add forecast.md docs/index.html
+          git add forecast.md docs/index.html predictions.json
           git diff --staged --quiet || (git commit -m "Auto-update forecast" && git push)

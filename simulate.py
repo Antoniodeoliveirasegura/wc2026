@@ -10,7 +10,7 @@ Outputs forecast.md and docs/index.html (the live dashboard).
 Run: python simulate.py
 """
 from __future__ import annotations
-import os, pickle, random, bisect, collections, urllib.request
+import os, pickle, random, bisect, collections, urllib.request, json, datetime
 import numpy as np
 import pandas as pd
 import wc_model as wc
@@ -187,6 +187,63 @@ def simulate_knockouts(qual_idx, alive_idx, A, n_sims=N_SIMS):
         rounds["champ"][cur[0]] += 1
     return rounds
 
+# ----------------------------------------------------------------- score predictions
+PRED_FILE = os.path.join(os.path.dirname(__file__), "predictions.json")
+
+def predict_score(m, zmap, confmap, a, b):
+    """Most-likely exact scoreline (argmax of the squad-value-adjusted DC score grid)."""
+    M = wc.score_matrix(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, neutral=True, maxg=MAXG)
+    i, j = np.unravel_index(int(np.argmax(M)), M.shape)
+    return int(i), int(j)
+
+def pred_key(a, b):
+    return "|".join(sorted((a, b)))
+
+def update_and_grade(m, zmap, confmap, rem, gdf):
+    """Lock a predicted score for each UPCOMING (not-yet-played) game and never
+    overwrite it -> a prediction can only ever be made before kickoff. Grade locked
+    predictions against played results. Returns display rows."""
+    preds = json.load(open(PRED_FILE, encoding="utf-8")) if os.path.exists(PRED_FILE) else {}
+    today = datetime.date.today().isoformat()
+    for a, b in rem:                                       # upcoming games only
+        k = pred_key(a, b)
+        if k not in preds:                                 # lock once, never overwrite
+            ga, gb = predict_score(m, zmap, confmap, a, b)
+            preds[k] = {"pred": {a: ga, b: gb}, "locked": today}
+    with open(PRED_FILE, "w", encoding="utf-8") as f:
+        json.dump(preds, f, ensure_ascii=False, indent=1)
+    played = {pred_key(r.home_team, r.away_team):
+              (r.home_team, r.away_team, int(r.home_score), int(r.away_score))
+              for r in gdf.itertuples(index=False)}
+    rows = []
+    for k, p in preds.items():
+        a, b = list(p["pred"].keys())
+        row = {"a": a, "b": b, "pa": p["pred"][a], "pb": p["pred"][b], "played": k in played}
+        if row["played"]:
+            h, aw, hs, as_ = played[k]
+            act = {h: hs, aw: as_}
+            row["act_a"], row["act_b"] = act[a], act[b]
+            row["correct"] = (p["pred"].get(h) == hs and p["pred"].get(aw) == as_)
+        rows.append(row)
+    rows.sort(key=lambda r: (r["played"], r["a"]))         # upcoming first
+    return rows
+
+def render_preds(preds):
+    if not preds:
+        return "<p style='color:var(--muted);font-size:13px;margin:0'>No upcoming games to predict yet.</p>"
+    out = []
+    for r in preds:
+        match = (f'<span class="mt">{r["a"]}</span> <span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
+                 f'<span class="mt">{r["b"]}</span>')
+        if not r["played"]:
+            badge = '<span class="badge b-pend">upcoming</span>'
+        elif r["correct"]:
+            badge = '<span class="badge b-ok">&#10003; exact</span>'
+        else:
+            badge = f'<span class="badge b-no">actual {r["act_a"]}&ndash;{r["act_b"]}</span>'
+        out.append(f'<div class="pred"><span>{match}</span>{badge}</div>')
+    return '<div class="preds">' + "".join(out) + "</div>"
+
 HTML_TEMPLATE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -211,18 +268,25 @@ table{width:100%;border-collapse:collapse;font-size:14px}
 th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
 th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:600}
 tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:8px}
+.hint{font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
+.preds{display:flex;flex-direction:column;gap:8px}
+.pred{display:flex;justify-content:space-between;align-items:center;font-size:14px;gap:12px}
+.pred .sc{font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
+.badge{font-size:12px;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}
 </style></head><body><div class="wrap">
 <h1>2026 World Cup forecast</h1>
 <p class="sub">__SUB__</p>
 <div class="phase">__PHASE__</div>
 <div class="card"><h2>Title odds</h2><div class="bars">__BARS__</div></div>
+<div class="card"><h2>Score predictions <span class="hint">locked before kickoff &middot; green = exact</span></h2>__PREDS__</div>
 <div class="card"><h2>All teams — chance of reaching each stage</h2><table>
 <thead><tr><th>Team</th><th>Qualify</th><th>Champion</th><th>Final</th><th>Semi</th><th>R16</th></tr></thead>
 <tbody>__ROWS__</tbody></table></div>
 <p class="foot">__FOOT__</p>
 </div></body></html>"""
 
-def write_site(teams, order, R, n_sims, phase, path):
+def write_site(teams, order, R, n_sims, phase, preds, path):
     champ = R["champ"]
     pc = lambda c, i: f"{c[i] / n_sims:.1%}" if c[i] else "—"
     mx = max(1, champ[order[0]])
@@ -239,7 +303,8 @@ def write_site(teams, order, R, n_sims, phase, path):
     foot = ("A calibrated distribution, not a single pick. Updates automatically as results "
             "come in. Built from free historical results + Transfermarkt squad values.")
     html = (HTML_TEMPLATE.replace("__SUB__", sub).replace("__PHASE__", phase)
-            .replace("__BARS__", bars).replace("__ROWS__", rows).replace("__FOOT__", foot))
+            .replace("__BARS__", bars).replace("__ROWS__", rows).replace("__FOOT__", foot)
+            .replace("__PREDS__", render_preds(preds)))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
@@ -254,10 +319,10 @@ if __name__ == "__main__":
     teams = sorted({t for g in groups for t in g})
     tidx = {t: i for i, t in enumerate(teams)}
     A = adv_matrix(m, teams, zmap, confmap)
+    rem = remaining_group_games(groups, gdf)
 
     if len(kdf) == 0:                                    # group stage in progress / just done
         base = base_stats(gdf, tidx)
-        rem = remaining_group_games(groups, gdf)
         rem_dists = [(tidx[a], tidx[b], *score_dist(m, zmap, confmap, a, b)) for a, b in rem]
         R = simulate_from_groups([[tidx[t] for t in g] for g in groups], base, rem_dists, A)
         phase = (f"Group stage - {len(gdf)} of 72 games played, {len(rem)} remaining"
@@ -299,7 +364,8 @@ if __name__ == "__main__":
                      f"{pct(R['final'],i)} | {pct(R['sf'],i)} | {pct(R['r16'],i)} |")
     with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
-    write_site(teams, order, R, N_SIMS, phase,
+    preds = update_and_grade(m, zmap, confmap, rem, gdf)
+    write_site(teams, order, R, N_SIMS, phase, preds,
                os.path.join(os.path.dirname(__file__), "docs", "index.html"))
 
     assert abs(sum(R["champ"].values()) - N_SIMS) < 1
