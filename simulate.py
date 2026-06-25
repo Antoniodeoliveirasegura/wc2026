@@ -144,20 +144,21 @@ def draw_r32(W, RU, TH):
     return matches
 
 def simulate(W, RU, TH, A, n_sims=N_SIMS):
-    champ = collections.Counter(); fin = collections.Counter(); semi = collections.Counter()
+    rounds = {k: collections.Counter() for k in ("r16", "qf", "sf", "final", "champ")}
     for _ in range(n_sims):
         survivors = [a if random.random() < A[a][b] else b for a, b in draw_r32(W, RU, TH)]
+        for t in survivors:
+            rounds["r16"][t] += 1
         random.shuffle(survivors)
         alive = survivors
         while len(alive) > 1:
-            if len(alive) == 4:
-                for t in alive: semi[t] += 1
-            if len(alive) == 2:
-                for t in alive: fin[t] += 1
+            stage = {8: "qf", 4: "sf", 2: "final"}.get(len(alive))
+            if stage:
+                for t in alive: rounds[stage][t] += 1
             alive = [alive[k] if random.random() < A[alive[k]][alive[k + 1]] else alive[k + 1]
                      for k in range(0, len(alive), 2)]
-        champ[alive[0]] += 1
-    return champ, fin, semi
+        rounds["champ"][alive[0]] += 1
+    return rounds
 
 if __name__ == "__main__":
     df = wc.load()
@@ -170,11 +171,26 @@ if __name__ == "__main__":
     W = [(qidx[t], g) for t, g in winners]
     RU = [(qidx[t], g) for t, g in runners]
     TH = [(qidx[t], g) for t, g in thirds]
-    champ, fin, semi = simulate(W, RU, TH, A)
+    R = simulate(W, RU, TH, A)
+    champ = R["champ"]
+    order = sorted(range(len(teams)), key=lambda i: champ[i], reverse=True)
 
     print(f"title odds  (N={N_SIMS:,}, real draw structure + host edge, MV_WEIGHT={MV_WEIGHT}):\n")
     print(f"  {'team':<18}{'champ':>7}{'final':>7}{'semi':>7}")
-    for i in sorted(range(len(teams)), key=lambda i: champ[i], reverse=True)[:16]:
-        print(f"  {teams[i]:<18}{champ[i]/N_SIMS:>6.1%}{fin[i]/N_SIMS:>7.1%}{semi[i]/N_SIMS:>7.1%}")
+    for i in order[:16]:
+        print(f"  {teams[i]:<18}{champ[i]/N_SIMS:>6.1%}{R['final'][i]/N_SIMS:>7.1%}{R['sf'][i]/N_SIMS:>7.1%}")
+
+    pct = lambda c, i: f"{c[i] / N_SIMS:.1%}"
+    lines = ["# 2026 World Cup forecast", "",
+             f"Dixon-Coles engine + Monte-Carlo knockout sim (N={N_SIMS:,}, real draw "
+             "structure + host advantage). All 32 qualifiers:", "",
+             "| Team | Champion | Final | Semi | Quarter | R16 |",
+             "|---|---|---|---|---|---|"]
+    for i in order:
+        lines.append(f"| {teams[i]} | {pct(champ, i)} | {pct(R['final'], i)} | "
+                     f"{pct(R['sf'], i)} | {pct(R['qf'], i)} | {pct(R['r16'], i)} |")
+    with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
+
     assert abs(sum(champ.values()) - N_SIMS) < 1 and max(champ.values()) / N_SIMS < 0.5
-    print("\nself-check ok: one champion per sim, no team over 50%")
+    print(f"\nwrote forecast.md ({len(teams)} teams)  |  self-check ok")
