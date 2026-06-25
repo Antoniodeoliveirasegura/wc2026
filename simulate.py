@@ -139,6 +139,60 @@ def simulate(W, RU, TH, A, n_sims=N_SIMS):
         rounds["champ"][alive[0]] += 1
     return rounds
 
+HTML_TEMPLATE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2026 World Cup Forecast</title>
+<style>
+:root{--bg:#0e1116;--card:#161b22;--ink:#e6edf3;--muted:#8b949e;--accent:#3b82f6;--line:#21262d}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
+font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:860px;margin:0 auto;padding:36px 20px 72px}
+h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--muted);margin:0 0 28px;font-size:14px}
+h2{font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:22px}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar{display:grid;grid-template-columns:118px 1fr 50px;align-items:center;gap:12px;font-size:14px}
+.bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.track{background:#21262d;border-radius:6px;height:22px;overflow:hidden}
+.fill{background:linear-gradient(90deg,#2563eb,#3b82f6);height:100%;border-radius:6px}
+.v{text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:8px}
+</style></head><body><div class="wrap">
+<h1>2026 World Cup forecast</h1>
+<p class="sub">__SUB__</p>
+<div class="card"><h2>Title odds</h2><div class="bars">__BARS__</div></div>
+<div class="card"><h2>All 32 qualifiers</h2><table>
+<thead><tr><th>Team</th><th>Champion</th><th>Final</th><th>Semi</th><th>Quarter</th><th>R16</th></tr></thead>
+<tbody>__ROWS__</tbody></table></div>
+<p class="foot">__FOOT__</p>
+</div></body></html>"""
+
+def write_site(teams, order, R, n_sims, path):
+    champ = R["champ"]
+    pc = lambda c, i: f"{c[i] / n_sims:.1%}"
+    mx = champ[order[0]] / n_sims
+    bars = "".join(
+        f'<div class="bar"><span class="nm">{teams[i]}</span>'
+        f'<span class="track"><span class="fill" style="width:{champ[i]/n_sims/mx*100:.0f}%"></span></span>'
+        f'<span class="v">{pc(champ, i)}</span></div>' for i in order[:12])
+    rows = "".join(
+        f"<tr><td>{teams[i]}</td><td>{pc(champ,i)}</td><td>{pc(R['final'],i)}</td>"
+        f"<td>{pc(R['sf'],i)}</td><td>{pc(R['qf'],i)}</td><td>{pc(R['r16'],i)}</td></tr>"
+        for i in order)
+    sub = (f"Dixon-Coles + connectivity-weighted squad value &middot; {n_sims:,} "
+           "Monte-Carlo simulations &middot; from the completed group stage")
+    foot = ("A calibrated distribution, not a single pick &mdash; the favourite tops out ~16%. "
+            "Built from free historical results + Transfermarkt squad values.")
+    html = (HTML_TEMPLATE.replace("__SUB__", sub).replace("__BARS__", bars)
+            .replace("__ROWS__", rows).replace("__FOOT__", foot))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(html)
+
 if __name__ == "__main__":
     df = wc.load()
     wcdf = wc_games(df)
@@ -173,6 +227,8 @@ if __name__ == "__main__":
                      f"{pct(R['sf'], i)} | {pct(R['qf'], i)} | {pct(R['r16'], i)} |")
     with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as f:
         f.write("\n".join(lines) + "\n")
+    write_site(teams, order, R, N_SIMS,
+               os.path.join(os.path.dirname(__file__), "docs", "index.html"))
 
     assert abs(sum(champ.values()) - N_SIMS) < 1 and max(champ.values()) / N_SIMS < 0.5
-    print(f"\nwrote forecast.md ({len(teams)} teams)  |  self-check ok")
+    print(f"\nwrote forecast.md + docs/index.html ({len(teams)} teams)  |  self-check ok")
