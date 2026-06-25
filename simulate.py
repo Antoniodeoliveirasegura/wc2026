@@ -353,8 +353,9 @@ h1{font-size:23px}.sub{font-size:13px;margin-bottom:8px}
 .card{padding:16px 13px}.card h2{font-size:13px}
 .bar{grid-template-columns:90px 1fr 40px;gap:8px;font-size:13px}
 .bar .nm img{margin-right:5px}
-th,td{padding:7px 5px;font-size:13px}.col-opt{display:none}
-.hcgrid{grid-template-columns:1fr}.hc{font-size:12px}
+table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
+th,td{padding:7px 4px;font-size:12.5px}.col-opt{display:none}
+.hcgrid{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}
 .pred{font-size:12px}
 }
 h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--muted);margin:0 0 6px;font-size:14px}
@@ -371,7 +372,7 @@ h2{font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;le
 tbody tr{transition:background .12s}tbody tr:hover{background:rgba(255,255,255,.04)}
 .card{transition:border-color .15s}
 .v{text-align:right;font-variant-numeric:tabular-nums}
-table{width:100%;border-collapse:collapse;font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:14px}.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
 th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
 th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:600}
 tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:8px}
@@ -394,9 +395,9 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 <div class="layout">
 <div class="main">
 <div class="card"><h2>Title odds</h2><div class="bars">__BARS__</div></div>
-<div class="card"><h2>All teams — chance of reaching each stage</h2><table>
+<div class="card"><h2>All teams — chance of reaching each stage</h2><div class="tbl"><table>
 <thead><tr><th>Team</th><th>Qualify</th><th>Champion</th><th class="col-opt">Final</th><th class="col-opt">Semi</th><th>R16</th></tr></thead>
-<tbody>__ROWS__</tbody></table></div>
+<tbody>__ROWS__</tbody></table></div></div>
 </div>
 <aside class="aside">
 <div class="card"><h2>Score predictions <span class="hint">by group &middot; green = exact</span></h2>__PREDS__</div>
