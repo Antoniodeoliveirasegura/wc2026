@@ -347,6 +347,16 @@ font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 .main{display:flex;flex-direction:column;gap:22px;min-width:0}
 .aside{min-width:0}
 @media(max-width:780px){.layout{grid-template-columns:1fr}}
+@media(max-width:640px){
+.wrap{padding:22px 13px 56px}
+h1{font-size:23px}.sub{font-size:13px;margin-bottom:8px}
+.card{padding:16px 13px}.card h2{font-size:13px}
+.bar{grid-template-columns:90px 1fr 40px;gap:8px;font-size:13px}
+.bar .nm img{margin-right:5px}
+th,td{padding:7px 5px;font-size:13px}.col-opt{display:none}
+.hcgrid{grid-template-columns:1fr}.hc{font-size:12px}
+.pred{font-size:12px}
+}
 h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--muted);margin:0 0 6px;font-size:14px}
 .phase{display:inline-block;background:#1f2937;color:#9fc5ff;font-size:12px;font-weight:600;
 padding:4px 11px;border-radius:999px;margin:0 0 26px}
@@ -385,7 +395,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 <div class="main">
 <div class="card"><h2>Title odds</h2><div class="bars">__BARS__</div></div>
 <div class="card"><h2>All teams — chance of reaching each stage</h2><table>
-<thead><tr><th>Team</th><th>Qualify</th><th>Champion</th><th>Final</th><th>Semi</th><th>R16</th></tr></thead>
+<thead><tr><th>Team</th><th>Qualify</th><th>Champion</th><th class="col-opt">Final</th><th class="col-opt">Semi</th><th>R16</th></tr></thead>
 <tbody>__ROWS__</tbody></table></div>
 </div>
 <aside class="aside">
@@ -406,7 +416,7 @@ def write_site(teams, order, R, n_sims, phase, preds, hc, path):
         f'<span class="v">{pc(champ, i)}</span></div>' for i in order[:12])
     rows = "".join(
         f"<tr><td>{flag(teams[i])}{teams[i]}</td><td>{pc(R['qualify'],i)}</td><td>{pc(champ,i)}</td>"
-        f"<td>{pc(R['final'],i)}</td><td>{pc(R['sf'],i)}</td><td>{pc(R['r16'],i)}</td></tr>"
+        f"<td class='col-opt'>{pc(R['final'],i)}</td><td class='col-opt'>{pc(R['sf'],i)}</td><td>{pc(R['r16'],i)}</td></tr>"
         for i in order)
     sub = ("Dixon-Coles + connectivity-weighted squad value &middot; simulates the rest "
            f"of the tournament &middot; {n_sims:,} Monte-Carlo runs")
