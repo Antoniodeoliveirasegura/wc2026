@@ -23,6 +23,8 @@ SHOOT_FILE = os.path.join(os.path.dirname(__file__), "shootouts.csv")
 N_SIMS = 20000
 HOSTS = {"United States", "Canada", "Mexico"}
 MAXG = 8
+WC_START = pd.Timestamp("2026-06-11")
+PRE_WC_CACHE = os.path.join(os.path.dirname(__file__), "pre_wc_model.pkl")
 
 def get_model(df):
     if os.path.exists(MODEL_CACHE):
@@ -284,6 +286,54 @@ def render_preds(grouped):
             out.append(f'<div class="{cls}"><span>{match}</span>{badge}</div>')
     return '<div class="preds">' + "".join(out) + "</div>"
 
+# ----------------------------------------------------------------- model hindcast (backtest)
+def pre_wc_model(df):
+    """Model fit ONLY on pre-tournament data -> honest backtest of played games (no leak)."""
+    if os.path.exists(PRE_WC_CACHE):
+        return pickle.load(open(PRE_WC_CACHE, "rb"))
+    pm = wc.fit_dixon_coles(df[df.date < WC_START], ref_date=WC_START)
+    pickle.dump(pm, open(PRE_WC_CACHE, "wb"))
+    return pm
+
+def hindcast(df, wcdf):
+    """How a pre-tournament model would have called each played WC game (argmax score)."""
+    pm = pre_wc_model(df)
+    zmap, confmap = mvmod.setup(pm)
+    rows, exact, ok = [], 0, 0
+    for r in wcdf.sort_values("date").itertuples(index=False):
+        h, a = r.home_team, r.away_team
+        if h not in pm["idx"] or a not in pm["idx"]:
+            continue
+        M = wc.score_matrix(mvmod.mv_adjust(pm, zmap, confmap, h, a), h, a,
+                            neutral=bool(r.neutral), maxg=MAXG)
+        pi, pj = (int(x) for x in np.unravel_index(int(np.argmax(M)), M.shape))
+        hs, as_ = int(r.home_score), int(r.away_score)
+        is_exact = (pi == hs and pj == as_)
+        res, pres = (hs > as_) - (hs < as_), (pi > pj) - (pi < pj)
+        exact += is_exact; ok += (res == pres)
+        rows.append({"home": h, "away": a, "ph": pi, "pa": pj, "ah": hs, "aa": as_,
+                     "exact": is_exact, "ok": res == pres})
+    return rows, exact, ok, len(rows)
+
+def render_hindcast(data):
+    rows, exact, ok, n = data
+    if not n:
+        return "<p style='color:var(--muted);font-size:13px'>No games played yet.</p>"
+    cards = []
+    for r in rows:
+        match = (f'{flag(r["home"])}{short(r["home"])} '
+                 f'<b class="sc">{r["ph"]}&ndash;{r["pa"]}</b> '
+                 f'{flag(r["away"])}{short(r["away"])}')
+        if r["exact"]:
+            badge = '<span class="badge b-ok">&#10003; exact</span>'
+        elif r["ok"]:
+            badge = f'<span class="badge b-amber">{r["ah"]}&ndash;{r["aa"]}</span>'
+        else:
+            badge = f'<span class="badge b-no">{r["ah"]}&ndash;{r["aa"]}</span>'
+        cards.append(f'<div class="hc"><span>{match}</span>{badge}</div>')
+    summ = f'{exact}/{n} exact scores &middot; {ok}/{n} outcomes right ({ok / n:.0%})'
+    return f'<div class="hcsum">{summ}</div><div class="hcgrid">' + "".join(cards) + "</div>"
+
 HTML_TEMPLATE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -322,7 +372,11 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .grp{font-size:11px;font-weight:600;color:#60a5fa;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line)}
 .grp.first{border-top:none;padding-top:0;margin-top:2px}
 .badge{font-size:11.5px;padding:3px 8px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}.b-done{background:#1c2128;color:#6e7681}
+.b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}.b-done{background:#1c2128;color:#6e7681}.b-amber{background:#3a2e14;color:#e3b341}
+.hcsum{font-size:13px;color:var(--muted);margin-bottom:14px}
+.hcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:8px}
+.hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0e1116;border:1px solid var(--line);border-radius:8px;padding:7px 11px}
+.hc .sc{font-weight:600;margin:0 3px}
 </style></head><body><div class="wrap">
 <h1>2026 World Cup forecast</h1>
 <p class="sub">__SUB__</p>
@@ -338,10 +392,11 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 <div class="card"><h2>Score predictions <span class="hint">by group &middot; green = exact</span></h2>__PREDS__</div>
 </aside>
 </div>
+<div class="card"><h2>Model hindcast <span class="hint">how it would have called games already played &middot; backtest, no hindsight</span></h2>__HINDCAST__</div>
 <p class="foot">__FOOT__</p>
 </div></body></html>"""
 
-def write_site(teams, order, R, n_sims, phase, preds, path):
+def write_site(teams, order, R, n_sims, phase, preds, hc, path):
     champ = R["champ"]
     pc = lambda c, i: f"{c[i] / n_sims:.1%}" if c[i] else "—"
     mx = max(1, champ[order[0]])
@@ -359,7 +414,8 @@ def write_site(teams, order, R, n_sims, phase, preds, path):
             "come in. Built from free historical results + Transfermarkt squad values.")
     html = (HTML_TEMPLATE.replace("__SUB__", sub).replace("__PHASE__", phase)
             .replace("__BARS__", bars).replace("__ROWS__", rows).replace("__FOOT__", foot)
-            .replace("__PREDS__", render_preds(preds)))
+            .replace("__PREDS__", render_preds(preds))
+            .replace("__HINDCAST__", render_hindcast(hc)))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         f.write(html)
@@ -420,7 +476,8 @@ if __name__ == "__main__":
     with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     preds = update_and_grade(m, zmap, confmap, rem, gdf, groups)
-    write_site(teams, order, R, N_SIMS, phase, preds,
+    hc = hindcast(df, wcdf)
+    write_site(teams, order, R, N_SIMS, phase, preds, hc,
                os.path.join(os.path.dirname(__file__), "docs", "index.html"))
 
     assert abs(sum(R["champ"].values()) - N_SIMS) < 1
