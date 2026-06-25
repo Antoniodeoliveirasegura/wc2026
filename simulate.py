@@ -252,7 +252,11 @@ HTML_TEMPLATE = """<!doctype html>
 :root{--bg:#0e1116;--card:#161b22;--ink:#e6edf3;--muted:#8b949e;--accent:#3b82f6;--line:#21262d}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-.wrap{max-width:880px;margin:0 auto;padding:36px 20px 72px}
+.wrap{max-width:1060px;margin:0 auto;padding:36px 20px 72px}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;align-items:start}
+.main{display:flex;flex-direction:column;gap:22px;min-width:0}
+.aside{min-width:0}
+@media(max-width:780px){.layout{grid-template-columns:1fr}}
 h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--muted);margin:0 0 6px;font-size:14px}
 .phase{display:inline-block;background:#1f2937;color:#9fc5ff;font-size:12px;font-weight:600;
 padding:4px 11px;border-radius:999px;margin:0 0 26px}
@@ -270,7 +274,7 @@ th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:
 tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:8px}
 .hint{font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
 .preds{display:flex;flex-direction:column;gap:8px}
-.pred{display:flex;justify-content:space-between;align-items:center;font-size:14px;gap:12px}
+.pred{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;flex-wrap:wrap}
 .pred .sc{font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
 .badge{font-size:12px;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}
@@ -278,11 +282,17 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 <h1>2026 World Cup forecast</h1>
 <p class="sub">__SUB__</p>
 <div class="phase">__PHASE__</div>
+<div class="layout">
+<div class="main">
 <div class="card"><h2>Title odds</h2><div class="bars">__BARS__</div></div>
-<div class="card"><h2>Score predictions <span class="hint">locked before kickoff &middot; green = exact</span></h2>__PREDS__</div>
 <div class="card"><h2>All teams — chance of reaching each stage</h2><table>
 <thead><tr><th>Team</th><th>Qualify</th><th>Champion</th><th>Final</th><th>Semi</th><th>R16</th></tr></thead>
 <tbody>__ROWS__</tbody></table></div>
+</div>
+<aside class="aside">
+<div class="card"><h2>Score predictions <span class="hint">locked before kickoff &middot; green = exact</span></h2>__PREDS__</div>
+</aside>
+</div>
 <p class="foot">__FOOT__</p>
 </div></body></html>"""
 
