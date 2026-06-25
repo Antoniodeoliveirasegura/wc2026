@@ -21,8 +21,7 @@ import marketvalue as mvmod
 DC_CUT = pd.Timestamp("2023-06-01")
 
 def confed_map():
-    t = pd.read_csv(mvmod.MV_FILE, compression="gzip")
-    return {str(r.country_name): str(r.confederation) for r in t.itertuples(index=False)}
+    return mvmod.load_conf()
 
 if __name__ == "__main__":
     df = wc.load()

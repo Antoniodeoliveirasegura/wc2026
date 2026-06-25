@@ -20,8 +20,11 @@ import numpy as np
 import pandas as pd
 import wc_model as wc
 
+# Committed snapshot of dcaribou/transfermarkt-datasets national_teams (squad value +
+# confederation). Committed rather than downloaded: GitHub Actions IPs get 403'd by the
+# source CDN, and national-team squad values are static enough to snapshot.
 MV_URL = "https://pub-e682421888d945d684bcae8890b0ec20.r2.dev/data/national_teams.csv.gz"
-MV_FILE = os.path.join(os.path.dirname(__file__), "national_teams.csv.gz")
+MV_FILE = os.path.join(os.path.dirname(__file__), "national_teams_values.csv")
 DC_CUT = pd.Timestamp("2023-06-01")
 CAL_CUT = pd.Timestamp("2024-06-01")
 ALIAS = {"South Korea": "Korea, South", "Bosnia and Herzegovina": "Bosnia-Herzegovina"}
@@ -45,9 +48,7 @@ MV_FILL = {
 }
 
 def load_mv():
-    if not os.path.exists(MV_FILE):
-        urllib.request.urlretrieve(MV_URL, MV_FILE)
-    t = pd.read_csv(MV_FILE, compression="gzip")
+    t = pd.read_csv(MV_FILE)
     out = {str(r.country_name): float(r.total_market_value)
            for r in t.itertuples(index=False) if pd.notna(r.total_market_value)}
     for k, v in MV_FILL.items():
@@ -73,9 +74,7 @@ def adjusted(m, z, beta):
 BETA_CROSS, BETA_WITHIN = 0.18, 0.10
 
 def load_conf():
-    if not os.path.exists(MV_FILE):
-        urllib.request.urlretrieve(MV_URL, MV_FILE)
-    t = pd.read_csv(MV_FILE, compression="gzip")
+    t = pd.read_csv(MV_FILE)
     return {str(r.country_name): str(r.confederation) for r in t.itertuples(index=False)}
 
 def setup(m):
