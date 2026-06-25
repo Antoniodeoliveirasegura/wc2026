@@ -1,16 +1,14 @@
 """
 2026 World Cup tournament simulator (Tier A engine + faithful knockout draw).
 
-Group stage is played (real results in the dataset). We compute standings +
-the 8 best third-placed teams, then Monte-Carlo the knockouts with:
-  - the real draw STRUCTURE: group winners are protected (face a 3rd/runner-up
-    in the R32, never each other), same-group teams separated in the R32;
+Group stage is played (real results in the dataset). We compute standings + the 8
+best third-placed teams, then Monte-Carlo the knockouts with:
+  - the real draw STRUCTURE: group winners protected (face a 3rd/runner-up in the
+    R32, never each other), same-group teams separated in the R32;
   - host advantage for USA/Canada/Mexico in their matches;
-  - Dixon-Coles match probabilities (+ market-value tilt).
-
-We randomise the exact slots we don't know (which winner meets which third) but
-keep the constraints we do know -> more faithful than a flat random shuffle,
-without hard-coding an exact slot table that could be wrong.
+  - Dixon-Coles match probabilities with a CONNECTIVITY-WEIGHTED squad-value prior
+    (Transfermarkt): applied across confederations, off within. Validated to help
+    cross-confederation matches (-0.0036 RPS) — see marketvalue.py / mv_connectivity.py.
 
 Run: python simulate.py
 """
@@ -19,23 +17,12 @@ import os, pickle, random, collections
 import numpy as np
 import pandas as pd
 import wc_model as wc
+import marketvalue as mvmod
 
 random.seed(0)
 MODEL_CACHE = os.path.join(os.path.dirname(__file__), "model.pkl")
 N_SIMS = 50000
-MV_WEIGHT = 0.08
 HOSTS = {"United States", "Canada", "Mexico"}   # play knockout games at home
-
-# Approx 2026 squad market value (EUR m). ponytail: hardcoded; swap for a feed.
-MARKET_VALUE = {
-    "England": 1400, "France": 1300, "Spain": 1150, "Brazil": 1000, "Portugal": 1000,
-    "Germany": 950, "Netherlands": 800, "Argentina": 680, "Belgium": 600, "Italy": 700,
-    "Croatia": 420, "Uruguay": 450, "Morocco": 420, "Colombia": 420, "Austria": 420,
-    "Switzerland": 360, "Senegal": 360, "USA": 350, "United States": 350, "Norway": 360,
-    "Japan": 320, "Ecuador": 300, "Mexico": 260, "Denmark": 450, "Serbia": 500,
-    "Australia": 130, "Canada": 220, "South Korea": 220, "Ghana": 220, "Egypt": 220,
-}
-MV_DEFAULT = 90.0
 
 def get_model(df):
     if os.path.exists(MODEL_CACHE):
@@ -90,20 +77,12 @@ def qualifiers(wcdf):
     teams = [t for t, _ in winners + runners + best8]
     return winners, runners, best8, teams
 
-# ----------------------------------------------------------------- market value tilt
-def apply_market_value(m, teams, weight=MV_WEIGHT):
-    vals = np.array([MARKET_VALUE.get(t, MV_DEFAULT) for t in teams], dtype=float)
-    z = (np.log(vals) - np.log(vals).mean()) / np.log(vals).std()
-    m2 = dict(m); m2["attack"] = m["attack"].copy(); m2["defense"] = m["defense"].copy()
-    for t, zz in zip(teams, z):
-        i = m["idx"][t]
-        m2["attack"][i] += weight * zz
-        m2["defense"][i] += weight * zz
-    return m2
-
 # ----------------------------------------------------------------- host-aware advance probs
-def adv_matrix(m, teams):
-    """A[i][j] = P(i beats j) incl. host advantage; asymmetric. Draw -> ET/pens coin flip."""
+def adv_matrix(m, teams, zmap, confmap):
+    """A[i][j] = P(i beats j) incl. host advantage + connectivity-weighted squad-value
+    prior; asymmetric. Draw -> ET/pens coin flip."""
+    def wdl(a, b, neutral):
+        return mvmod.mv_wdl(m, zmap, confmap, a, b, neutral=neutral)
     n = len(teams); A = np.zeros((n, n))
     for i in range(n):
         for j in range(n):
@@ -112,12 +91,12 @@ def adv_matrix(m, teams):
             a, b = teams[i], teams[j]
             ah, bh = a in HOSTS, b in HOSTS
             if ah and not bh:
-                ph, pdr, pa = wc.wdl(m, a, b, neutral=False)        # a at home
+                ph, pdr, pa = wdl(a, b, False)        # a at home
             elif bh and not ah:
-                pb, pdr, pa2 = wc.wdl(m, b, a, neutral=False)        # b at home
+                pb, pdr, pa2 = wdl(b, a, False)        # b at home
                 ph, pa = pa2, pb
             else:
-                ph, pdr, pa = wc.wdl(m, a, b, neutral=True)
+                ph, pdr, pa = wdl(a, b, True)
             A[i][j] = ph + 0.5 * pdr
     return A
 
@@ -163,11 +142,12 @@ def simulate(W, RU, TH, A, n_sims=N_SIMS):
 if __name__ == "__main__":
     df = wc.load()
     wcdf = wc_games(df)
-    m = apply_market_value(get_model(df), sorted(set(wcdf.home_team) | set(wcdf.away_team)))
+    m = get_model(df)
+    zmap, confmap = mvmod.setup(m)
 
     winners, runners, thirds, teams = qualifiers(wcdf)
     qidx = {t: i for i, t in enumerate(teams)}
-    A = adv_matrix(m, teams)
+    A = adv_matrix(m, teams, zmap, confmap)
     W = [(qidx[t], g) for t, g in winners]
     RU = [(qidx[t], g) for t, g in runners]
     TH = [(qidx[t], g) for t, g in thirds]
@@ -175,15 +155,17 @@ if __name__ == "__main__":
     champ = R["champ"]
     order = sorted(range(len(teams)), key=lambda i: champ[i], reverse=True)
 
-    print(f"title odds  (N={N_SIMS:,}, real draw structure + host edge, MV_WEIGHT={MV_WEIGHT}):\n")
+    print(f"title odds  (N={N_SIMS:,}, real draw + host edge + connectivity-weighted "
+          f"market value):\n")
     print(f"  {'team':<18}{'champ':>7}{'final':>7}{'semi':>7}")
     for i in order[:16]:
         print(f"  {teams[i]:<18}{champ[i]/N_SIMS:>6.1%}{R['final'][i]/N_SIMS:>7.1%}{R['sf'][i]/N_SIMS:>7.1%}")
 
     pct = lambda c, i: f"{c[i] / N_SIMS:.1%}"
     lines = ["# 2026 World Cup forecast", "",
-             f"Dixon-Coles engine + Monte-Carlo knockout sim (N={N_SIMS:,}, real draw "
-             "structure + host advantage). All 32 qualifiers:", "",
+             f"Dixon-Coles engine + connectivity-weighted squad-value prior + Monte-Carlo "
+             f"knockout sim (N={N_SIMS:,}, real draw structure + host advantage). "
+             "All 32 qualifiers:", "",
              "| Team | Champion | Final | Semi | Quarter | R16 |",
              "|---|---|---|---|---|---|"]
     for i in order:
