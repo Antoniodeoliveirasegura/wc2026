@@ -207,6 +207,13 @@ def flag(team):
     iso = FLAG.get(team)
     return f'<img src="https://flagcdn.com/24x18/{iso}.png" width="20" height="15" alt="">' if iso else ""
 
+SHORT = {"Bosnia and Herzegovina": "Bosnia", "United States": "USA", "Czech Republic": "Czechia",
+         "South Korea": "S. Korea", "South Africa": "S. Africa", "Saudi Arabia": "Saudi",
+         "New Zealand": "N. Zealand", "Ivory Coast": "Ivory C."}
+
+def short(t):
+    return SHORT.get(t, t)
+
 def predict_score(m, zmap, confmap, a, b):
     """Most-likely exact scoreline (argmax of the squad-value-adjusted DC score grid)."""
     M = wc.score_matrix(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, neutral=True, maxg=MAXG)
@@ -216,10 +223,11 @@ def predict_score(m, zmap, confmap, a, b):
 def pred_key(a, b):
     return "|".join(sorted((a, b)))
 
-def update_and_grade(m, zmap, confmap, rem, gdf):
-    """Lock a predicted score for each UPCOMING (not-yet-played) game and never
-    overwrite it -> a prediction can only ever be made before kickoff. Grade locked
-    predictions against played results. Returns display rows."""
+def update_and_grade(m, zmap, confmap, rem, gdf, groups):
+    """Lock a predicted score for each UPCOMING game (never overwritten -> only ever
+    before kickoff). Organise every group game BY GROUP: played games show the result
+    (graded green/red where we had a locked prediction), upcoming games show the
+    prediction. Returns [(group_label, rows)]."""
     preds = json.load(open(PRED_FILE, encoding="utf-8")) if os.path.exists(PRED_FILE) else {}
     today = datetime.date.today().isoformat()
     for a, b in rem:                                       # upcoming games only
@@ -232,33 +240,48 @@ def update_and_grade(m, zmap, confmap, rem, gdf):
     played = {pred_key(r.home_team, r.away_team):
               (r.home_team, r.away_team, int(r.home_score), int(r.away_score))
               for r in gdf.itertuples(index=False)}
-    rows = []
-    for k, p in preds.items():
-        a, b = list(p["pred"].keys())
-        row = {"a": a, "b": b, "pa": p["pred"][a], "pb": p["pred"][b], "played": k in played}
-        if row["played"]:
-            h, aw, hs, as_ = played[k]
-            act = {h: hs, aw: as_}
-            row["act_a"], row["act_b"] = act[a], act[b]
-            row["correct"] = (p["pred"].get(h) == hs and p["pred"].get(aw) == as_)
-        rows.append(row)
-    rows.sort(key=lambda r: (r["played"], r["a"]))         # upcoming first
-    return rows
 
-def render_preds(preds):
-    if not preds:
-        return "<p style='color:var(--muted);font-size:13px;margin:0'>No upcoming games to predict yet.</p>"
+    def make_row(a, b):
+        k = pred_key(a, b); p = preds.get(k)
+        if k in played:
+            h, aw, hs, as_ = played[k]; act = {h: hs, aw: as_}
+            if p:
+                ok = (p["pred"].get(h) == hs and p["pred"].get(aw) == as_)
+                return {"a": a, "b": b, "pa": p["pred"][a], "pb": p["pred"][b],
+                        "status": "correct" if ok else "wrong", "act_a": act[a], "act_b": act[b]}
+            return {"a": a, "b": b, "pa": act[a], "pb": act[b], "status": "result"}
+        if p:
+            return {"a": a, "b": b, "pa": p["pred"][a], "pb": p["pred"][b], "status": "upcoming"}
+        return None
+
+    grouped = []
+    for gi, g in enumerate(sorted(groups, key=lambda x: x[0])):
+        rows = [r for i in range(len(g)) for j in range(i + 1, len(g))
+                if (r := make_row(g[i], g[j]))]
+        rows.sort(key=lambda r: r["status"] == "upcoming")      # results/graded first
+        grouped.append(("Group " + chr(65 + gi), rows))
+    return grouped
+
+def render_preds(grouped):
+    if not grouped:
+        return "<p style='color:var(--muted);font-size:13px;margin:0'>No games yet.</p>"
     out = []
-    for r in preds:
-        match = (f'<span class="mt">{flag(r["a"])}{r["a"]}</span> <span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
-                 f'<span class="mt">{flag(r["b"])}{r["b"]}</span>')
-        if not r["played"]:
-            badge = '<span class="badge b-pend">upcoming</span>'
-        elif r["correct"]:
-            badge = '<span class="badge b-ok">&#10003; exact</span>'
-        else:
-            badge = f'<span class="badge b-no">actual {r["act_a"]}&ndash;{r["act_b"]}</span>'
-        out.append(f'<div class="pred"><span>{match}</span>{badge}</div>')
+    for gi, (label, rows) in enumerate(grouped):
+        out.append(f'<div class="grp{" first" if gi == 0 else ""}">{label}</div>')
+        for r in rows:
+            match = (f'<span class="mt">{flag(r["a"])}{short(r["a"])}</span> '
+                     f'<span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
+                     f'<span class="mt">{flag(r["b"])}{short(r["b"])}</span>')
+            st = r["status"]
+            if st == "upcoming":
+                badge, cls = '<span class="badge b-pend">upcoming</span>', "pred"
+            elif st == "result":
+                badge, cls = '<span class="badge b-done">played</span>', "pred dim"
+            elif st == "correct":
+                badge, cls = '<span class="badge b-ok">&#10003;</span>', "pred"
+            else:
+                badge, cls = f'<span class="badge b-no">{r["act_a"]}&ndash;{r["act_b"]}</span>', "pred"
+            out.append(f'<div class="{cls}"><span>{match}</span>{badge}</div>')
     return '<div class="preds">' + "".join(out) + "</div>"
 
 HTML_TEMPLATE = """<!doctype html>
@@ -293,11 +316,13 @@ th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-
 th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:600}
 tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:8px}
 .hint{font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
-.preds{display:flex;flex-direction:column;gap:8px}
-.pred{display:flex;justify-content:space-between;align-items:center;font-size:13px;gap:8px;flex-wrap:wrap}
-.pred .sc{font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
-.badge{font-size:12px;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}
+.preds{display:flex;flex-direction:column;gap:6px}
+.pred{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:8px;flex-wrap:wrap}
+.pred.dim{opacity:.55}.pred .sc{font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
+.grp{font-size:11px;font-weight:600;color:#60a5fa;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line)}
+.grp.first{border-top:none;padding-top:0;margin-top:2px}
+.badge{font-size:11.5px;padding:3px 8px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}.b-done{background:#1c2128;color:#6e7681}
 </style></head><body><div class="wrap">
 <h1>2026 World Cup forecast</h1>
 <p class="sub">__SUB__</p>
@@ -310,7 +335,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 <tbody>__ROWS__</tbody></table></div>
 </div>
 <aside class="aside">
-<div class="card"><h2>Score predictions <span class="hint">locked before kickoff &middot; green = exact</span></h2>__PREDS__</div>
+<div class="card"><h2>Score predictions <span class="hint">by group &middot; green = exact</span></h2>__PREDS__</div>
 </aside>
 </div>
 <p class="foot">__FOOT__</p>
@@ -394,7 +419,7 @@ if __name__ == "__main__":
                      f"{pct(R['final'],i)} | {pct(R['sf'],i)} | {pct(R['r16'],i)} |")
     with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
-    preds = update_and_grade(m, zmap, confmap, rem, gdf)
+    preds = update_and_grade(m, zmap, confmap, rem, gdf, groups)
     write_site(teams, order, R, N_SIMS, phase, preds,
                os.path.join(os.path.dirname(__file__), "docs", "index.html"))
 
