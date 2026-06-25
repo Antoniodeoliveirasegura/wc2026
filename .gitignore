@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 results.csv
+xg_matches.csv
 *.gz
 *.pkl
 *_out.txt

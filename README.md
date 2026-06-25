@@ -47,6 +47,10 @@ Most ideas don't beat a well-tuned Dixon-Coles — documented so they aren't re-
 - *Uniform* market-value prior (`marketvalue.py`): no help; it perturbs the
   well-identified within-confederation pairs. Only the **connectivity-weighted**
   version (`mv_connectivity.py` validates it) works.
+- xG-based ratings (`xg_test.py`): xG *is* a better strength signal than goals
+  (−0.017 log-loss on 127 World Cup matches), but international xG exists only for
+  recent major tournaments — undeployable for a 49k-match model. Premise holds,
+  the data doesn't.
 
 Grounded in the literature: Groll et al.'s hybrid random forest, Caley's "PADDLIN'"
 2026 model, and `amirdaraee/world-cup-predictions` (whose squad-value prior was its
