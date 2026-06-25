@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 results.csv
 xg_matches.csv
+shootouts.csv
 *.gz
 *.pkl
 *_out.txt

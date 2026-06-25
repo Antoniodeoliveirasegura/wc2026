@@ -79,9 +79,19 @@ def test_draw_r32_uses_all_32_in_16_matches():
     assert len(set(flat)) == 32
 
 
-def test_simulate_returns_valid_distribution():
+def test_simulate_knockouts_distribution():
     n = 32
     A = np.full((n, n), 0.5); np.fill_diagonal(A, 0.0)
-    R = sim.simulate(*_toy_bracket(), A, n_sims=200)
+    R = sim.simulate_knockouts(list(range(n)), list(range(n)), A, n_sims=200)
     assert sum(R["champ"].values()) == 200
-    assert sum(R["r16"].values()) == 200 * 16
+    assert sum(R["qualify"].values()) == 200 * n
+
+
+def test_simulate_from_groups_qualifies_32():
+    n = 48
+    A = np.full((n, n), 0.5); np.fill_diagonal(A, 0.0)
+    groups_idx = [list(range(g * 4, g * 4 + 4)) for g in range(12)]
+    base = (np.arange(n) % 7, np.zeros(n, int), np.zeros(n, int))
+    R = sim.simulate_from_groups(groups_idx, base, [], A, n_sims=200)
+    assert sum(R["champ"].values()) == 200
+    assert sum(R["qualify"].values()) == 200 * 32   # 2 per group + 8 thirds

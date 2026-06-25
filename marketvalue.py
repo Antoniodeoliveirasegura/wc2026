@@ -86,18 +86,22 @@ def setup(m):
     confmap = {t: conf.get(ALIAS.get(t, t)) for t in m["teams"]}
     return zmap, confmap
 
-def mv_wdl(m, zmap, confmap, home, away, neutral=True):
-    """W/D/L with a squad-value prior applied ACROSS confederations (where DC is
-    weakly identified) and switched off within (where it isn't)."""
+def mv_adjust(m, zmap, confmap, home, away):
+    """Per-pair connectivity-weighted squad-value adjustment -> adjusted model.
+    Applied ACROSS confederations (where DC is weakly identified), off within."""
     beta = BETA_CROSS if confmap.get(home) != confmap.get(away) else BETA_WITHIN
     if beta == 0.0:
-        return wc.wdl(m, home, away, neutral=neutral)
+        return m
     att, deff = m["attack"].copy(), m["defense"].copy()
     for t in (home, away):
         i = m["idx"][t]; zz = zmap.get(t, 0.0)
         att[i] += beta * zz; deff[i] += beta * zz
     m2 = dict(m); m2["attack"], m2["defense"] = att, deff
-    return wc.wdl(m2, home, away, neutral=neutral)
+    return m2
+
+def mv_wdl(m, zmap, confmap, home, away, neutral=True):
+    """W/D/L with the connectivity-weighted squad-value prior."""
+    return wc.wdl(mv_adjust(m, zmap, confmap, home, away), home, away, neutral=neutral)
 
 if __name__ == "__main__":
     df = wc.load()
