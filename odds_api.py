@@ -20,6 +20,7 @@ ENV = os.path.join(_HERE, ".env")
 
 LINES_SPREAD = {0.5, 1.5, 2.5}
 LINES_TOTAL = {0.5, 1.5, 2.5, 3.5, 4.5}
+SHARP_BOOK = "pinnacle"          # the sharp benchmark — its de-vigged line ~= true probability
 
 # The Odds API team name -> our martj42 dataset name (only where they differ).
 ALIAS = {
@@ -45,7 +46,7 @@ def _key() -> str:
     return k
 
 
-def fetch_raw(markets=("h2h", "spreads", "totals"), regions="us", ttl=1800, force=False) -> list:
+def fetch_raw(markets=("h2h", "spreads", "totals"), regions="us,eu", ttl=1800, force=False) -> list:
     """Fetch (or reuse cached) WC odds. ttl seconds before a refresh; force re-pulls now."""
     if not force and os.path.exists(CACHE):
         c = json.load(open(CACHE, encoding="utf-8"))
@@ -67,43 +68,48 @@ def remaining_quota() -> str | None:
     return None
 
 
+def _outcomes(mk: str, outcomes: list, home: str):
+    """Yield (market, token, price) for one bookmaker market, in betting.market_probs() keys."""
+    for o in outcomes:
+        nm, pt, price = o["name"], o.get("point"), o.get("price")
+        if not price:
+            continue
+        if mk == "h2h":
+            tok = "DRAW" if nm == "Draw" else ("HOME" if _alias(nm) == home else "AWAY")
+            yield ("moneyline", tok, float(price))
+        elif mk == "spreads" and pt is not None and abs(pt) in LINES_SPREAD:
+            side = "HOME" if _alias(nm) == home else "AWAY"
+            yield (f"spread_{abs(pt)}", f"{side}_{'-' if pt < 0 else '+'}{abs(pt)}", float(price))
+        elif mk == "totals" and pt is not None and pt in LINES_TOTAL:
+            yield (f"total_{pt}", f"{'OVER' if nm == 'Over' else 'UNDER'}_{pt}", float(price))
+
+
 def normalize(data: list) -> dict:
-    """-> {(home, away): {"commence": iso, "odds": {(market, token): best_decimal}}}.
-    Tokens match betting.market_probs(): moneyline HOME/DRAW/AWAY, spread_X HOME_-X/AWAY_+X,
-    total_X OVER_X/UNDER_X. Best price across books is kept."""
+    """-> {(home, away): {"commence": iso, "best": {(market,token): best_decimal},
+    "sharp": {(market,token): pinnacle_decimal}}}. `best` = best price across all books
+    (line shopping, the price you'd bet at); `sharp` = Pinnacle only (the fair-line benchmark)."""
     games: dict = {}
     for e in data:
         home, away = _alias(e["home_team"]), _alias(e["away_team"])
-        book: dict = {}
-
-        def better(k, price):
-            if price and (k not in book or price > book[k]):
-                book[k] = float(price)
-
+        best: dict = {}
+        sharp: dict = {}
         for bk in e.get("bookmakers", []):
+            is_sharp = bk.get("key") == SHARP_BOOK
             for mkt in bk.get("markets", []):
-                mk = mkt["key"]
-                for o in mkt["outcomes"]:
-                    nm, pt, price = o["name"], o.get("point"), o.get("price")
-                    if mk == "h2h":
-                        tok = "DRAW" if nm == "Draw" else ("HOME" if _alias(nm) == home else "AWAY")
-                        better(("moneyline", tok), price)
-                    elif mk == "spreads" and pt is not None and abs(pt) in LINES_SPREAD:
-                        side = "HOME" if _alias(nm) == home else "AWAY"
-                        tok = f"{side}_{'-' if pt < 0 else '+'}{abs(pt)}"
-                        better((f"spread_{abs(pt)}", tok), price)
-                    elif mk == "totals" and pt is not None and pt in LINES_TOTAL:
-                        tok = f"{'OVER' if nm == 'Over' else 'UNDER'}_{pt}"
-                        better((f"total_{pt}", tok), price)
-        games[(home, away)] = {"commence": e.get("commence_time"), "odds": book}
+                for k0, k1, price in _outcomes(mkt["key"], mkt["outcomes"], home):
+                    key = (k0, k1)
+                    if key not in best or price > best[key]:
+                        best[key] = price
+                    if is_sharp:
+                        sharp[key] = price
+        games[(home, away)] = {"commence": e.get("commence_time"), "best": best, "sharp": sharp}
     return games
 
 
 if __name__ == "__main__":
     data = fetch_raw()
     g = normalize(data)
-    print(f"events: {len(g)} | quota remaining: {remaining_quota()}")
+    sharp_games = sum(1 for info in g.values() if info["sharp"])
+    print(f"events: {len(g)} | with Pinnacle: {sharp_games} | quota remaining: {remaining_quota()}")
     for (h, a), info in list(g.items())[:3]:
-        print(f"  {h} vs {a}: {len(info['odds'])} priced selections")
-        for k, v in list(info["odds"].items())[:6]:
-            print(f"     {k} = {v}")
+        print(f"  {h} vs {a}: best={len(info['best'])} sel, pinnacle={len(info['sharp'])} sel")

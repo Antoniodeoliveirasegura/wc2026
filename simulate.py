@@ -424,6 +424,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .edge{color:var(--ink);font-variant-numeric:tabular-nums}.edge.pos{color:#3fb950}
 .vb{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .vb.bet{background:#10331f;color:#3fb950}.vb.lean{background:#3a2e14;color:#e3b341}.vb.avoid{background:#1c2128;color:#6e7681}
+.vb.mkt{background:#102a3a;color:#60a5fa}
 .gfoot{color:var(--muted);font-size:11.5px;margin-top:10px}
 .gkick{font-size:11.5px;color:#9fc5ff;font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
 .note{background:#1a1f27;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
@@ -522,8 +523,9 @@ def render_bets() -> str | None:
         rows = []
         for b in g["topBets"]:
             v = b["recommendation"]
+            mv = ' <span class="vb mkt">value</span>' if b.get("valueType") == "market" else ""
             rows.append(
-                f'<div class="bet"><span class="bsel"><span class="vb {v}">{v}</span>{b["selection"]}</span>'
+                f'<div class="bet"><span class="bsel"><span class="vb {v}">{v}</span>{b["selection"]}{mv}</span>'
                 f'<span class="bmeta"><b class="edge{" pos" if b["edge"] > 0 else ""}">'
                 f'{b["edge"]*100:+.0f}%</b><span>{b["modelProbability"]*100:.0f}% vs '
                 f'{b["sportsbookImpliedProbability"]*100:.0f}%</span><span>{b["confidence"]}</span></span></div>')
@@ -534,8 +536,9 @@ def render_bets() -> str | None:
             + (f'<div class="gkick">{kick}</div>' if kick else "")
             + f'{"".join(rows)}'
             f'<div class="gfoot">{g.get("avoidsCount", 0)} other markets screened out</div></div>')
-    note = ('<div class="note"><b>Edge</b> = model probability &minus; the book&rsquo;s implied '
-            'probability (best price across books). Top 5 de-correlated picks per game. '
+    note = ('<div class="note"><b>Edge</b> = model probability &minus; <b>Pinnacle&rsquo;s '
+            'de-vigged line</b> (the sharpest market = best estimate of true probability); '
+            'odds shown are the best price across books. Top 5 de-correlated picks per game. '
             '<b>Totals &amp; BTTS markets show as leans only</b> &mdash; the model&rsquo;s goal totals '
             'aren&rsquo;t calibrated yet, so they aren&rsquo;t staked as bets. No historical odds = '
             'not ROI-backtested. Informational, not betting advice.</div>')

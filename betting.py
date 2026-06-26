@@ -23,8 +23,10 @@ from typing import TypedDict, Literal
 import numpy as np
 
 # ----------------------------------------------------------------- tunable thresholds
-MIN_EDGE = 0.04          # a "bet" needs >= 4% edge
+MIN_EDGE = 0.04          # a model "bet" needs >= 4% edge vs the sharp line
 LEAN_EDGE = 0.02         # a "lean" needs >= 2% edge
+MARKET_EDGE = 0.01       # a "market value" pick: best price beats Pinnacle fair by >= 1%
+                         # (sharp markets are efficient -> pure market value is small and rare)
 MIN_RELIABILITY = 0.60   # markets noisier than this can't be a "bet"
 MIN_ODDS, MAX_ODDS = 1.25, 12.0   # skip junk favorites and lottery longshots
 MAX_BETS, MAX_LEANS = 3, 5
@@ -42,7 +44,7 @@ def _bet_eligible(market: str) -> bool:
     return CALIBRATED_TOTALS or not market.startswith(_SUM_DEPENDENT)
 
 # weights for the ranking score (edge-dominant; others break ties)
-W_EDGE, W_KELLY, W_CONF, W_REL = 3.0, 1.0, 0.10, 0.05
+W_EDGE, W_KELLY, W_CONF, W_REL, W_MKT = 3.0, 1.0, 0.10, 0.05, 2.0
 
 Confidence = Literal["low", "medium", "high"]
 Verdict = Literal["bet", "lean", "avoid"]
@@ -62,9 +64,12 @@ class BetJSON(TypedDict):
     market: str
     selection: str
     odds: float
+    sharpOdds: float | None
     modelProbability: float
     sportsbookImpliedProbability: float
     edge: float
+    marketEdge: float | None
+    valueType: str
     confidence: Confidence
     recommendation: Verdict
     reason: str
@@ -106,9 +111,11 @@ class Candidate:
     token: str             # canonical selection, e.g. "HOME", "OVER_2.5" (joins model<->odds)
     label: str             # human-readable, e.g. "Paraguay win"
     model_p: float
-    odds: float            # decimal odds from the book (best available)
+    odds: float            # decimal odds from the book (best available — the price you bet at)
     side: str              # correlation tag: which team it leans, or "OVER"/"UNDER"/""
-    fair: float | None = None   # de-vigged market probability (the honest benchmark for edge)
+    fair: float | None = None        # de-vigged benchmark for edge (Pinnacle's line when available)
+    sharp_odds: float | None = None  # Pinnacle's price for this selection (CLV reference)
+    pin_fair: float | None = None    # Pinnacle-only de-vigged prob (None if Pinnacle didn't price it)
 
     @property
     def implied(self) -> float:
@@ -116,7 +123,18 @@ class Candidate:
 
     @property
     def edge(self) -> float:
-        return self.model_p - self.implied
+        return self.model_p - self.implied            # model's disagreement with the (sharp) line
+
+    @property
+    def market_edge(self) -> float | None:
+        """Pure market value: the best price beats Pinnacle's fair line (model-independent +EV).
+        None when Pinnacle didn't price this selection."""
+        return (self.pin_fair - 1.0 / self.odds) if self.pin_fair is not None else None
+
+    @property
+    def value_type(self) -> str:
+        me = self.market_edge
+        return "market" if (me is not None and me >= MARKET_EDGE) else "model"
 
     @property
     def reliability(self) -> float:
@@ -129,8 +147,13 @@ class Candidate:
 
     @property
     def confidence_score(self) -> float:
-        decisiveness = 0.6 + 0.8 * abs(self.model_p - 0.5)      # decisive prob => more confident
-        return min(1.0, self.reliability * decisiveness)
+        base = self.reliability * (0.6 + 0.8 * abs(self.model_p - 0.5))   # decisive => more confident
+        me = self.market_edge
+        if me is not None and me >= MARKET_EDGE:     # best price beats Pinnacle fair -> price-confirmed
+            base += 0.25
+        elif self.edge >= 0.10:                      # implausibly large edge vs a liquid market ->
+            base *= 0.55                             # almost certainly model error, not value -> distrust
+        return max(0.0, min(1.0, base))
 
     @property
     def confidence(self) -> Confidence:
@@ -139,8 +162,8 @@ class Candidate:
 
     @property
     def rank(self) -> float:
-        return (W_EDGE * self.edge + W_KELLY * self.kelly
-                + W_CONF * self.confidence_score + W_REL * self.reliability)
+        return (W_EDGE * self.edge + W_KELLY * self.kelly + W_CONF * self.confidence_score
+                + W_REL * self.reliability + W_MKT * max(0.0, self.market_edge or 0.0))
 
 
 # ----------------------------------------------------------------- model market probabilities
@@ -198,8 +221,12 @@ def market_probs(M: np.ndarray, lam: float, mu: float) -> dict[str, dict[str, fl
 
 # ----------------------------------------------------------------- recommendation logic
 def _reason(c: Candidate, decorrelated_from: str | None) -> str:
-    base = (f"Model {c.model_p:.0%} vs market {c.implied:.0%} (+{c.edge:.0%} edge), "
-            f"{c.confidence} confidence on a {'sharp' if c.reliability >= 0.8 else 'moderate'} market.")
+    if c.value_type == "market":
+        base = (f"Market value: best price ({c.odds:.2f}) beats Pinnacle's fair line by "
+                f"{c.market_edge:+.0%} &mdash; +EV regardless of our model. {c.confidence} confidence.")
+    else:
+        base = (f"Model {c.model_p:.0%} vs Pinnacle fair {c.implied:.0%} (+{c.edge:.0%}), "
+                f"{c.confidence} confidence on a {'sharp' if c.reliability >= 0.8 else 'moderate'} market.")
     if decorrelated_from:
         base += f" Preferred over correlated picks ({decorrelated_from})."
     return base
@@ -207,9 +234,12 @@ def _reason(c: Candidate, decorrelated_from: str | None) -> str:
 
 def _to_json(c: Candidate, verdict: Verdict, reason: str) -> BetJSON:
     return {"market": c.market, "selection": c.label, "odds": round(c.odds, 2),
+            "sharpOdds": round(c.sharp_odds, 2) if c.sharp_odds else None,
             "modelProbability": round(c.model_p, 4),
             "sportsbookImpliedProbability": round(c.implied, 4),
-            "edge": round(c.edge, 4), "confidence": c.confidence,
+            "edge": round(c.edge, 4),
+            "marketEdge": round(c.market_edge, 4) if c.market_edge is not None else None,
+            "valueType": c.value_type, "confidence": c.confidence,
             "recommendation": verdict, "reason": reason}
 
 

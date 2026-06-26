@@ -89,17 +89,21 @@ def devig_book(book: dict) -> dict:
     return fair
 
 
-def candidates_for(home, away, M, lam, mu, book) -> list[bet.Candidate]:
-    fair = devig_book(book)                               # honest no-vig benchmark for edge
+def candidates_for(home, away, M, lam, mu, best, sharp) -> list[bet.Candidate]:
+    sharp_fair = devig_book(sharp)                        # Pinnacle de-vigged = the benchmark
+    best_fair = devig_book(best)                          # fallback where Pinnacle didn't price it
     cands = []
     for market, sels in bet.market_probs(M, lam, mu).items():
         for token, p in sels.items():
-            o = book.get((market, token))
+            o = best.get((market, token))
             if not o:
                 continue                         # no book price -> can't compute edge -> skip
+            key = (market, token)
             label, side = label_side(market, token, home, away)
             cands.append(bet.Candidate(market, token, label, float(p), float(o), side,
-                                       fair=fair.get((market, token))))
+                                       fair=sharp_fair.get(key) or best_fair.get(key),
+                                       sharp_odds=sharp.get(key),
+                                       pin_fair=sharp_fair.get(key)))     # Pinnacle-only -> market value
     return cands
 
 
@@ -125,7 +129,8 @@ if __name__ == "__main__":
         M = wc.score_matrix(adj, home, away, neutral=True, maxg=sim.MAXG)
         lam, mu = game_lambdas(adj, home, away)
         gid = f"{home}-{away}".lower().replace(" ", "-")
-        rec = bet.recommend(gid, candidates_for(home, away, M, lam, mu, info["odds"]))
+        rec = bet.recommend(gid, candidates_for(home, away, M, lam, mu,
+                                                info["best"], info["sharp"]))
         rec.update(home=home, away=away, commence=info.get("commence"))
         out.append(rec)
 

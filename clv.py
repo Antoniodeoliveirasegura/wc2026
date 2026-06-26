@@ -44,23 +44,27 @@ def update(games: list[dict], now: datetime.datetime | None = None) -> dict:
     for g in games:
         ko = _parse(g.get("commence"))
         for b in g.get("topBets", []):
-            if b.get("recommendation") == "avoid" or not b.get("odds"):
+            # CLV reference is the SHARP (Pinnacle) price — its line movement is the real
+            # validator. Fall back to best price only when Pinnacle didn't price the selection.
+            ref = b.get("sharpOdds") or b.get("odds")
+            if b.get("recommendation") == "avoid" or not ref:
                 continue
             key = f'{g["gameId"]}|{b["market"]}|{b["selection"]}'
             rec = log.get(key)
             if rec is None:
                 log[key] = {"game": f'{g["home"]} v {g["away"]}', "market": b["market"],
-                            "selection": b["selection"], "entry_odds": b["odds"],
+                            "selection": b["selection"], "entry_odds": ref,
+                            "ref": "pinnacle" if b.get("sharpOdds") else "best",
                             "entry_time": now.isoformat(timespec="minutes"),
                             "commence": g.get("commence"), "model_p": b["modelProbability"],
-                            "last_odds": b["odds"], "closing_odds": None, "clv": None}
+                            "last_odds": ref, "closing_odds": None, "clv": None}
             elif rec["closing_odds"] is None:
                 if ko and now >= ko:                       # kicked off -> freeze the close
-                    close = rec.get("last_odds") or b["odds"]
+                    close = rec.get("last_odds") or ref
                     rec["closing_odds"] = close
                     rec["clv"] = round(rec["entry_odds"] / close - 1.0, 4)
                 else:                                      # still open -> track latest price
-                    rec["last_odds"] = b["odds"]
+                    rec["last_odds"] = ref
     _save(log)
     return log
 
