@@ -14,10 +14,15 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
+      - name: Refresh value bets (needs ODDS_API_KEY secret; tolerated if absent)
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: python recommend_bets.py || echo "bets refresh skipped (no key / quota / API error)"
       - run: python simulate.py
-      - name: Commit and push if the forecast changed
+      - name: Commit and push if anything changed
         run: |
           git config user.name "wc2026-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add forecast.md docs/index.html predictions.json
+          git add forecast.md predictions.json bets.json clv_log.json odds_cache.json \
+                  docs/index.html docs/table.html docs/scores.html docs/bets.html
           git diff --staged --quiet || (git commit -m "Auto-update forecast" && git push)
