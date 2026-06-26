@@ -10,4 +10,5 @@ shootouts.csv
 .env
 bets.json
 odds_cache.json
+clv_log.json
 .claude/

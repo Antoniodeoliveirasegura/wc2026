@@ -16,6 +16,7 @@ import pandas as pd
 import wc_model as wc
 import marketvalue as mvmod
 import altitude as altmod
+import clv
 
 random.seed(0)
 MODEL_CACHE = os.path.join(os.path.dirname(__file__), "model.pkl")
@@ -424,6 +425,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .vb{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:5px;white-space:nowrap}
 .vb.bet{background:#10331f;color:#3fb950}.vb.lean{background:#3a2e14;color:#e3b341}.vb.avoid{background:#1c2128;color:#6e7681}
 .gfoot{color:var(--muted);font-size:11.5px;margin-top:10px}
+.gkick{font-size:11.5px;color:#9fc5ff;font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
 .note{background:#1a1f27;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
 @media(max-width:640px){
 .wrap{padding:20px 13px 56px}.nav .inner{padding:0 13px}
@@ -467,13 +469,13 @@ def render_overview(teams, order, R, n_sims, phase) -> str:
     bars = "".join(
         f'<div class="bar"><span class="nm">{flag(teams[i])}{teams[i]}</span>'
         f'<span class="track"><span class="fill" style="width:{champ[i]/mx*100:.0f}%"></span></span>'
-        f'<span class="v">{_pc(champ, i, n_sims)}</span></div>' for i in order[:12])
+        f'<span class="v">{_pc(champ, i, n_sims)}</span></div>' for i in order[:32])
     sub = ("Dixon-Coles + connectivity-weighted squad value, blended with Elo, altitude-aware "
            f"&middot; {n_sims:,} Monte-Carlo runs")
     foot = ('<p class="foot">A calibrated distribution, not a single pick &mdash; the favourite '
             'tops out ~16%. See <a href="table.html" style="color:#60a5fa">all teams</a>.</p>')
     return (_hero("2026 World Cup forecast", sub, phase)
-            + f'<div class="card"><h2>Title odds <span class="hint">top 12</span></h2>'
+            + f'<div class="card"><h2>Title odds <span class="hint">top 32</span></h2>'
             f'<div class="bars">{bars}</div>{foot}</div>')
 
 
@@ -497,6 +499,16 @@ def render_scores(preds, hc, phase) -> str:
             f'played games &middot; no hindsight</span></h2>{render_hindcast(hc)}</div>')
 
 
+def _kickoff(iso: str | None) -> str:
+    if not iso:
+        return ""
+    try:
+        dt = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00"))
+        return dt.strftime("%b %d &middot; %H:%M UTC")
+    except ValueError:
+        return ""
+
+
 def render_bets() -> str | None:
     """Bake bets.json (from recommend_bets.py) into a static page. None if no data yet."""
     path = os.path.join(os.path.dirname(__file__), "bets.json")
@@ -504,6 +516,7 @@ def render_bets() -> str | None:
         return None
     d = json.load(open(path, encoding="utf-8"))
     games = [g for g in d.get("games", []) if g.get("topBets")]
+    games.sort(key=lambda g: g.get("commence") or "z")        # next kickoff first
     cards = []
     for g in games:
         rows = []
@@ -514,9 +527,12 @@ def render_bets() -> str | None:
                 f'<span class="bmeta"><b class="edge{" pos" if b["edge"] > 0 else ""}">'
                 f'{b["edge"]*100:+.0f}%</b><span>{b["modelProbability"]*100:.0f}% vs '
                 f'{b["sportsbookImpliedProbability"]*100:.0f}%</span><span>{b["confidence"]}</span></span></div>')
+        kick = _kickoff(g.get("commence"))
         cards.append(
             f'<div class="card game"><div class="ghead">{flag(g["home"])}{short(g["home"])}'
-            f'<span class="vs">v</span>{flag(g["away"])}{short(g["away"])}</div>{"".join(rows)}'
+            f'<span class="vs">v</span>{flag(g["away"])}{short(g["away"])}</div>'
+            + (f'<div class="gkick">{kick}</div>' if kick else "")
+            + f'{"".join(rows)}'
             f'<div class="gfoot">{g.get("avoidsCount", 0)} other markets screened out</div></div>')
     note = ('<div class="note"><b>Edge</b> = model probability &minus; the book&rsquo;s implied '
             'probability (best price across books). Top 5 de-correlated picks per game. '
@@ -525,7 +541,18 @@ def render_bets() -> str | None:
             'not ROI-backtested. Informational, not betting advice.</div>')
     head = _hero("Value bets", "Model probabilities vs live sportsbook odds",
                  f'updated {d.get("generatedAt", "")}')
-    body = (head + note + (f'<div class="games">{"".join(cards)}</div>' if cards
+    cs = clv.summary()
+    if cs["settled"]:
+        clv_line = (f'<div class="note"><b>Closing Line Value: {cs["avg_clv"]:+.1%}</b> over '
+                    f'{cs["settled"]} settled picks &mdash; '
+                    + ('the model is beating the market’s closing price (real edge).'
+                       if cs["avg_clv"] > 0 else 'behind the closing line so far.') + '</div>')
+    else:
+        clv_line = (f'<div class="note">CLV validation active: {cs["logged"]} picks logged. '
+                    'Closing Line Value &mdash; whether our entry price beats the market’s '
+                    'final price &mdash; populates as games kick off; positive average CLV is the '
+                    'evidence the edges are real.</div>')
+    body = (head + note + clv_line + (f'<div class="games">{"".join(cards)}</div>' if cards
             else '<div class="card"><p style="color:var(--muted);margin:0">No positive-edge '
                  'bets in the current slate.</p></div>'))
     return body

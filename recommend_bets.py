@@ -10,6 +10,7 @@ Run: ODDS_API_KEY=... python recommend_bets.py     (or put the key in a gitignor
 """
 from __future__ import annotations
 import os, json, datetime
+from collections import defaultdict
 import numpy as np
 import wc_model as wc
 import marketvalue as mvmod
@@ -17,6 +18,7 @@ import altitude as altmod
 import simulate as sim
 import betting as bet
 import odds_api
+import clv
 
 
 def label_side(market: str, token: str, home: str, away: str) -> tuple[str, str]:
@@ -56,7 +58,39 @@ def label_side(market: str, token: str, home: str, away: str) -> tuple[str, str]
     return (f"{market} {token}", "")
 
 
+def _devig_group(market: str, token: str) -> str | None:
+    """Which outcomes share a market for de-vigging. None = ungrouped (no de-vig)."""
+    if market == "moneyline":
+        return "ml"                                       # HOME/DRAW/AWAY (3-way)
+    if market.startswith("total_") or market == "btts":
+        return market                                     # OVER/UNDER or YES/NO (2-way)
+    if market.startswith("spread_"):
+        side, val = token.split("_")
+        v = float(val)
+        return f"sp_{v if side == 'HOME' else -v}"        # 2 sides of one handicap line
+    return None
+
+
+def devig_book(book: dict) -> dict:
+    """{(market,token): odds} -> {(market,token): de-vigged fair probability} (power method)."""
+    groups: dict[str, list] = defaultdict(list)
+    for mt in book:
+        g = _devig_group(*mt)
+        if g:
+            groups[g].append(mt)
+    fair = {}
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        dv = bet.devig_power([book[mt] for mt in members])
+        if dv:
+            for mt, p in zip(members, dv):
+                fair[mt] = p
+    return fair
+
+
 def candidates_for(home, away, M, lam, mu, book) -> list[bet.Candidate]:
+    fair = devig_book(book)                               # honest no-vig benchmark for edge
     cands = []
     for market, sels in bet.market_probs(M, lam, mu).items():
         for token, p in sels.items():
@@ -64,7 +98,8 @@ def candidates_for(home, away, M, lam, mu, book) -> list[bet.Candidate]:
             if not o:
                 continue                         # no book price -> can't compute edge -> skip
             label, side = label_side(market, token, home, away)
-            cands.append(bet.Candidate(market, token, label, float(p), float(o), side))
+            cands.append(bet.Candidate(market, token, label, float(p), float(o), side,
+                                       fair=fair.get((market, token))))
     return cands
 
 
@@ -101,6 +136,9 @@ if __name__ == "__main__":
     with open(os.path.join(os.path.dirname(__file__), "bets.json"), "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=1)
 
+    clv.update(out)                                        # log entry prices / freeze closings
+    cs = clv.summary()
+
     n_bets = sum(len(r["recommendedBets"]) for r in out)
     print(f"games priced: {len(out)} | skipped (name mismatch): {len(skipped)} "
           f"| quota: {odds_api.remaining_quota()}")
@@ -111,5 +149,7 @@ if __name__ == "__main__":
             for b in r["recommendedBets"]:
                 print(f"  BET  {b['selection']:<26} edge={b['edge']:+.0%} {b['confidence']}  "
                       f"(model {b['modelProbability']:.0%} vs mkt {b['sportsbookImpliedProbability']:.0%})")
+    print(f"\nCLV log: {cs['logged']} picks tracked, {cs['settled']} settled"
+          + (f", avg CLV {cs['avg_clv']:+.2%}" if cs['settled'] else " (CLV populates as games kick off)"))
     if skipped:
-        print("\nskipped (team name not in model):", skipped)
+        print("skipped (team name not in model):", skipped)

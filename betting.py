@@ -61,12 +61,35 @@ RELIABILITY = {
 class BetJSON(TypedDict):
     market: str
     selection: str
+    odds: float
     modelProbability: float
     sportsbookImpliedProbability: float
     edge: float
     confidence: Confidence
     recommendation: Verdict
     reason: str
+
+
+def devig_power(odds: list[float]) -> list[float] | None:
+    """No-vig fair probabilities via the POWER method (Clarke et al. 2017: universally beats
+    multiplicative, best for 3-way 1X2). Find k with sum((1/o)^k)=1, then fair_i=(1/o_i)^k.
+    Edge vs this fair line ~= true EV%. None if the market isn't a full >=2-outcome set."""
+    r = [1.0 / o for o in odds if o and o > 1.0]
+    if len(r) != len(odds) or len(r) < 2:
+        return None
+    s = sum(r)
+    if s <= 1.0:                                   # no margin (or arb) -> just normalize
+        return [x / s for x in r]
+    lo, hi = 1.0, 10.0
+    for _ in range(60):                            # bisection on the exponent
+        k = (lo + hi) / 2
+        if sum(x ** k for x in r) > 1.0:
+            lo = k
+        else:
+            hi = k
+    p = [x ** ((lo + hi) / 2) for x in r]
+    t = sum(p)
+    return [x / t for x in p]
 
 
 class GameJSON(TypedDict):
@@ -85,10 +108,11 @@ class Candidate:
     model_p: float
     odds: float            # decimal odds from the book (best available)
     side: str              # correlation tag: which team it leans, or "OVER"/"UNDER"/""
+    fair: float | None = None   # de-vigged market probability (the honest benchmark for edge)
 
     @property
     def implied(self) -> float:
-        return 1.0 / self.odds
+        return self.fair if self.fair is not None else 1.0 / self.odds
 
     @property
     def edge(self) -> float:
@@ -182,7 +206,7 @@ def _reason(c: Candidate, decorrelated_from: str | None) -> str:
 
 
 def _to_json(c: Candidate, verdict: Verdict, reason: str) -> BetJSON:
-    return {"market": c.market, "selection": c.label,
+    return {"market": c.market, "selection": c.label, "odds": round(c.odds, 2),
             "modelProbability": round(c.model_p, 4),
             "sportsbookImpliedProbability": round(c.implied, 4),
             "edge": round(c.edge, 4), "confidence": c.confidence,
