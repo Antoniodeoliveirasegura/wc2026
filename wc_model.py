@@ -132,6 +132,44 @@ def fit_elo(df, home_adv=65.0, start=1500.0):
         r[row.home_team] = rh + delta; r[row.away_team] = ra - delta
     return r
 
+# ----------------------------------------------------------------------------- Elo -> W/D/L + DC blend
+ELO_BLEND_W = 0.5     # geometric weight on Dixon-Coles in the DC x Elo pool
+                      # (experiments.py: w=0.5 -> -0.0035 RPS out-of-sample, broad/flat optimum)
+
+def fit_elo_wdl(df, home_adv=65.0, start=1500.0):
+    """Forward Elo pass + a multinomial-logistic map from pre-match Elo diff -> (H,D,A).
+    Leak-free: each match's diff uses only prior results. Returns (ratings, predict),
+    where predict(home, away, neutral) -> np.array([P_home, P_draw, P_away])."""
+    from sklearn.linear_model import LogisticRegression
+    def K(t, margin):
+        t = str(t).lower()
+        base = 50 if ("world cup" in t and "qual" not in t) else \
+               40 if any(s in t for s in ("euro", "copa", "nations", "cup", "qualif")) else \
+               20 if "friendly" in t else 30
+        g = 1.0 if margin <= 1 else 1.5 if margin == 2 else 1.75 + (margin - 3) / 8.0
+        return base * g
+    r = {}; diff = np.zeros(len(df)); y = np.zeros(len(df), int)
+    for k, row in enumerate(df.itertuples(index=False)):
+        rh = r.get(row.home_team, start); ra = r.get(row.away_team, start)
+        ha = 0.0 if row.neutral else home_adv
+        diff[k] = (rh + ha) - ra
+        y[k] = _outcome(row.home_score, row.away_score)
+        eh = 1.0 / (1.0 + 10 ** (-(rh + ha - ra) / 400.0))
+        sh = 1.0 if row.home_score > row.away_score else 0.5 if row.home_score == row.away_score else 0.0
+        d = K(row.tournament, abs(row.home_score - row.away_score)) * (sh - eh)
+        r[row.home_team] = rh + d; r[row.away_team] = ra - d
+    clf = LogisticRegression(max_iter=3000).fit(diff.reshape(-1, 1), y)
+    def predict(home, away, neutral=True):
+        rh = r.get(home, start); ra = r.get(away, start)
+        d = (rh + (0.0 if neutral else home_adv)) - ra
+        return clf.predict_proba(np.array([[d]]))[0]
+    return r, predict
+
+def geo_blend(p_dc, p_elo, w=ELO_BLEND_W):
+    """Geometric (log-opinion-pool) blend of two W/D/L vectors, renormalized."""
+    g = np.clip(np.asarray(p_dc), 1e-12, 1) ** w * np.clip(np.asarray(p_elo), 1e-12, 1) ** (1 - w)
+    return g / g.sum()
+
 # ----------------------------------------------------------------------------- validation
 def _metrics(probs, outcomes):
     """probs: (N,3) [H,D,A]; outcomes: ints 0/1/2."""

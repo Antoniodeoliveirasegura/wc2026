@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 import wc_model as wc
 import marketvalue as mvmod
+import altitude as altmod
 
 random.seed(0)
 MODEL_CACHE = os.path.join(os.path.dirname(__file__), "model.pkl")
@@ -79,13 +80,31 @@ def remaining_group_games(groups, gdf):
     return [(g[i], g[j]) for g in groups for i in range(len(g)) for j in range(i + 1, len(g))
             if frozenset((g[i], g[j])) not in played]
 
-def score_dist(m, zmap, confmap, a, b):
-    M = wc.score_matrix(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, neutral=True, maxg=MAXG)
+def fixture_cities(df):
+    """{frozenset(team pair): venue city} for every 2026 WC fixture (played + scheduled).
+    Read from the raw results file because wc.load() drops not-yet-played rows."""
+    raw = pd.read_csv(wc.DATA)
+    f = raw[(raw.date >= "2026-06-01") & (raw.tournament == "FIFA World Cup")]
+    return {frozenset((r.home_team, r.away_team)): r.city for r in f.itertuples(index=False)}
+
+def score_dist(m, zmap, confmap, a, b, city=""):
+    # altitude penalty applies only at scheduled high-altitude venues (Mexico City /
+    # Guadalajara); a no-op elsewhere. Knockout venues aren't assigned yet -> Option B.
+    adj = altmod.alt_adjust(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, city)
+    M = wc.score_matrix(adj, a, b, neutral=True, maxg=MAXG)
     cells = [(i, j) for i in range(MAXG + 1) for j in range(MAXG + 1)]
     cum = np.cumsum(M.flatten()); cum = cum / cum[-1]
     return cells, cum
 
-def adv_matrix(m, teams, zmap, confmap):
+def adv_matrix(m, teams, zmap, confmap, elo_predict, city=""):
+    """P(a beats b) for every ordered pair, used by the knockout sims. W/D/L is the
+    DC+squad-value model geometrically blended with Elo (wc.geo_blend; validated
+    -0.0035 RPS). Host edge applies in non-neutral framings exactly as before.
+    city != "" applies the venue altitude penalty (for the Azteca knockout slots)."""
+    def blended(home, away, neutral):
+        base = altmod.alt_adjust(mvmod.mv_adjust(m, zmap, confmap, home, away), home, away, city)
+        dc = np.array(wc.wdl(base, home, away, neutral=neutral))
+        return wc.geo_blend(dc, elo_predict(home, away, neutral=neutral))   # [H,D,A]
     n = len(teams); A = np.zeros((n, n))
     for a in range(n):
         for b in range(n):
@@ -93,14 +112,12 @@ def adv_matrix(m, teams, zmap, confmap):
                 continue
             ta, tb = teams[a], teams[b]
             ah, bh = ta in HOSTS, tb in HOSTS
-            if ah and not bh:
-                ph, pdr, pa = mvmod.mv_wdl(m, zmap, confmap, ta, tb, neutral=False)
-            elif bh and not ah:
-                pb, pdr, pa2 = mvmod.mv_wdl(m, zmap, confmap, tb, ta, neutral=False)
-                ph = pa2
-            else:
-                ph, pdr, pa = mvmod.mv_wdl(m, zmap, confmap, ta, tb, neutral=True)
-            A[a][b] = ph + 0.5 * pdr
+            if bh and not ah:                                   # tb hosts -> frame in tb's home
+                H, D, Aw = blended(tb, ta, neutral=False)
+                A[a][b] = Aw + 0.5 * D                          # ta is the away side here
+            else:                                               # ta hosts (non-neutral), or neutral
+                H, D, Aw = blended(ta, tb, neutral=not (ah and not bh))
+                A[a][b] = H + 0.5 * D
     return A
 
 def draw_r32(W, RU, TH):
@@ -123,22 +140,38 @@ def draw_r32(W, RU, TH):
         bi, _ = rem.pop(k); matches.append((ai, bi))
     return matches
 
-def play_out(matches, A, rounds):
-    survivors = [a if random.random() < A[a][b] else b for a, b in matches]
+def play_out(matches, A, rounds, A_alt=None, azteca_idx=None):
+    """A_alt/azteca_idx (Option B): the R32 Match 79 slot and its R16 leg (Match 92) are
+    played at Estadio Azteca, so they use the altitude-adjusted advantage A_alt; everything
+    else uses A. azteca_idx is the index in `matches` of the Group-A-winner slot."""
+    survivors = []; azteca_alive = None
+    for k, (a, b) in enumerate(matches):
+        adv = A_alt if (A_alt is not None and k == azteca_idx) else A
+        w = a if random.random() < adv[a][b] else b
+        survivors.append(w)
+        if k == azteca_idx:
+            azteca_alive = w                       # plays its R16 at Azteca too (Match 92)
     for t in survivors:
         rounds["r16"][t] += 1
     random.shuffle(survivors); alive = survivors
+    r16_round = True
     while len(alive) > 1:
         stage = {8: "qf", 4: "sf", 2: "final"}.get(len(alive))
         if stage:
             for t in alive:
                 rounds[stage][t] += 1
-        alive = [alive[k] if random.random() < A[alive[k]][alive[k + 1]] else alive[k + 1]
-                 for k in range(0, len(alive), 2)]
+        nxt = []
+        for k in range(0, len(alive), 2):
+            x, y = alive[k], alive[k + 1]
+            adv = A_alt if (r16_round and A_alt is not None and azteca_alive in (x, y)) else A
+            nxt.append(x if random.random() < adv[x][y] else y)
+        alive = nxt; r16_round = False             # rounds after R16 are all sea-level US venues
     rounds["champ"][alive[0]] += 1
 
-def simulate_from_groups(groups_idx, base, rem_dists, A, n_sims=N_SIMS):
-    """Group stage in progress: sample remaining group games -> qualifiers -> knockouts."""
+def simulate_from_groups(groups_idx, base, rem_dists, A, n_sims=N_SIMS,
+                         A_azteca=None, azteca_group=None):
+    """Group stage in progress: sample remaining group games -> qualifiers -> knockouts.
+    azteca_group (Option B): index of Mexico's group, whose winner plays R32+R16 at Azteca."""
     pts0, gf0, ga0 = base
     rounds = {k: collections.Counter() for k in ("qualify", "r16", "qf", "sf", "final", "champ")}
     for _ in range(n_sims):
@@ -158,7 +191,12 @@ def simulate_from_groups(groups_idx, base, rem_dists, A, n_sims=N_SIMS):
         best8 = [(t, gi) for t, gi, *_ in TH[:8]]
         for t, _ in W + RU + best8:
             rounds["qualify"][t] += 1
-        play_out(draw_r32(W, RU, best8), A, rounds)
+        matches = draw_r32(W, RU, best8)
+        azteca_idx = None
+        if azteca_group is not None and A_azteca is not None:
+            aw = next((t for t, gi in W if gi == azteca_group), None)   # Group A winner this sim
+            azteca_idx = next((k for k, (a, b) in enumerate(matches) if aw in (a, b)), None)
+        play_out(matches, A, rounds, A_alt=A_azteca, azteca_idx=azteca_idx)
     return rounds
 
 def load_shootouts():
@@ -419,8 +457,8 @@ def write_site(teams, order, R, n_sims, phase, preds, hc, path):
         f"<tr><td>{flag(teams[i])}{teams[i]}</td><td>{pc(R['qualify'],i)}</td><td>{pc(champ,i)}</td>"
         f"<td class='col-opt'>{pc(R['final'],i)}</td><td class='col-opt'>{pc(R['sf'],i)}</td><td>{pc(R['r16'],i)}</td></tr>"
         for i in order)
-    sub = ("Dixon-Coles + connectivity-weighted squad value &middot; simulates the rest "
-           f"of the tournament &middot; {n_sims:,} Monte-Carlo runs")
+    sub = ("Dixon-Coles + connectivity-weighted squad value, blended with Elo &middot; simulates "
+           f"the rest of the tournament &middot; {n_sims:,} Monte-Carlo runs")
     foot = ("A calibrated distribution, not a single pick. Updates automatically as results "
             "come in. Built from free historical results + Transfermarkt squad values.")
     html = (HTML_TEMPLATE.replace("__SUB__", sub).replace("__PHASE__", phase)
@@ -440,13 +478,25 @@ if __name__ == "__main__":
     groups = groups_from(gdf)
     teams = sorted({t for g in groups for t in g})
     tidx = {t: i for i, t in enumerate(teams)}
-    A = adv_matrix(m, teams, zmap, confmap)
+    _, elo_predict = wc.fit_elo_wdl(df)
+    A = adv_matrix(m, teams, zmap, confmap, elo_predict)
     rem = remaining_group_games(groups, gdf)
+
+    # Option B: the R32 (Match 79) and R16 (Match 92) for Mexico's group winner are at Estadio
+    # Azteca (2240m). Build an altitude-adjusted advantage matrix + locate Mexico's group.
+    # WC_NO_ALT_KO disables it (for the A/B accuracy check).
+    A_azteca = None if os.environ.get("WC_NO_ALT_KO") else \
+        adv_matrix(m, teams, zmap, confmap, elo_predict, city="Mexico City")
+    azteca_group = next((i for i, g in enumerate(groups) if "Mexico" in g), None) \
+        if A_azteca is not None else None
 
     if len(kdf) == 0:                                    # group stage in progress / just done
         base = base_stats(gdf, tidx)
-        rem_dists = [(tidx[a], tidx[b], *score_dist(m, zmap, confmap, a, b)) for a, b in rem]
-        R = simulate_from_groups([[tidx[t] for t in g] for g in groups], base, rem_dists, A)
+        fcity = fixture_cities(df)
+        rem_dists = [(tidx[a], tidx[b], *score_dist(m, zmap, confmap, a, b,
+                      fcity.get(frozenset((a, b)), ""))) for a, b in rem]
+        R = simulate_from_groups([[tidx[t] for t in g] for g in groups], base, rem_dists, A,
+                                 A_azteca=A_azteca, azteca_group=azteca_group)
         phase = (f"Group stage - {len(gdf)} of 72 games played, {len(rem)} remaining"
                  if rem else "Group stage complete - knockouts next")
     else:                                                # knockouts under way
