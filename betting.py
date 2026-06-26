@@ -27,21 +27,23 @@ MIN_EDGE = 0.04          # a model "bet" needs >= 4% edge vs the sharp line
 LEAN_EDGE = 0.02         # a "lean" needs >= 2% edge
 MARKET_EDGE = 0.01       # a "market value" pick: best price beats Pinnacle fair by >= 1%
                          # (sharp markets are efficient -> pure market value is small and rare)
+MAX_MARKET_EDGE = 0.10   # above this a "market edge" is a stale/erroneous line, not real value
+                         # (real sharp-market value tops out ~2%) -> ignore as a value signal
 MIN_RELIABILITY = 0.60   # markets noisier than this can't be a "bet"
 MIN_ODDS, MAX_ODDS = 1.25, 12.0   # skip junk favorites and lottery longshots
+MAX_PROB = 0.92                   # skip near-certain selections (Over 0.5 etc.): tiny odds make
+                                  # any "edge" line-noise, and the risk/reward is a lay-up
 MAX_BETS, MAX_LEANS = 3, 5
 FH_SHARE = 0.45          # share of a match's goals expected in the first half (approx)
 
-# The model is validated on W/D/L OUTCOMES (RPS), not on goal VOLUME. Live odds revealed its
-# goal totals run systematically low -> spurious Under/Draw "edges". Until the goal level is
-# calibrated, markets that depend on the goal SUM may appear as leans but are NOT staked as
-# bets; only outcome/margin markets (moneyline, double chance, handicap) can be a "bet".
-CALIBRATED_TOTALS = False
+# The model's W/D/L is RPS-validated but its goal LEVEL runs ~1.3x low vs the sharp market
+# (totals_calibrate.py: model E[total] 1.99 vs Pinnacle 2.60; corroborated by ~2.7 WC goals/game).
+# GOAL_SCALE calibrates lambda for the goal-SUM markets only (totals/BTTS/team totals/first half),
+# leaving the validated outcome/margin model untouched. This makes totals HONEST (removes the
+# old Under bias) — but since we calibrated TO the sharp line, we don't trust the model to BEAT
+# it, so goal-sum markets are stakeable only on pure MARKET VALUE (a soft price beats Pinnacle).
+GOAL_SCALE = 1.30
 _SUM_DEPENDENT = ("total_", "team_total_", "btts", "fh_total_")
-
-
-def _bet_eligible(market: str) -> bool:
-    return CALIBRATED_TOTALS or not market.startswith(_SUM_DEPENDENT)
 
 # weights for the ranking score (edge-dominant; others break ties)
 W_EDGE, W_KELLY, W_CONF, W_REL, W_MKT = 3.0, 1.0, 0.10, 0.05, 2.0
@@ -134,7 +136,7 @@ class Candidate:
     @property
     def value_type(self) -> str:
         me = self.market_edge
-        return "market" if (me is not None and me >= MARKET_EDGE) else "model"
+        return "market" if (me is not None and MARKET_EDGE <= me <= MAX_MARKET_EDGE) else "model"
 
     @property
     def reliability(self) -> float:
@@ -149,7 +151,7 @@ class Candidate:
     def confidence_score(self) -> float:
         base = self.reliability * (0.6 + 0.8 * abs(self.model_p - 0.5))   # decisive => more confident
         me = self.market_edge
-        if me is not None and me >= MARKET_EDGE:     # best price beats Pinnacle fair -> price-confirmed
+        if self.value_type == "market":              # best price beats Pinnacle fair -> price-confirmed
             base += 0.25
         elif self.edge >= 0.10:                      # implausibly large edge vs a liquid market ->
             base *= 0.55                             # almost certainly model error, not value -> distrust
@@ -186,25 +188,32 @@ def market_probs(M: np.ndarray, lam: float, mu: float) -> dict[str, dict[str, fl
             f"HOME_-{line}": float(M[diff > line].sum()), f"AWAY_-{line}": float(M[diff < -line].sum()),
             f"HOME_+{line}": float(M[diff > -line].sum()), f"AWAY_+{line}": float(M[diff < line].sum()),
         }
-    for line in (0.5, 1.5, 2.5, 3.5, 4.5):
-        over = float(M[tot > line].sum())
+    # Goal-SUM markets use a GOAL_SCALE-calibrated independent-Poisson matrix (the model's
+    # neutral-venue lambda runs low vs the sharp totals line); outcome/margin markets above
+    # keep the RPS-validated DC matrix M.
+    fact = np.array([factorial(int(x)) for x in idx], dtype=float)
+    sl, sm = GOAL_SCALE * lam, GOAL_SCALE * mu
+    psh = np.exp(-sl) * sl ** idx / fact
+    psa = np.exp(-sm) * sm ** idx / fact
+    Ms = np.outer(psh, psa); Ms = Ms / Ms.sum()
+
+    for line in (1.5, 2.5, 3.5):                # 0.5/4.5 dropped: near-certain, error-prone, low value
+        over = float(Ms[tot > line].sum())
         out[f"total_{line}"] = {f"OVER_{line}": over, f"UNDER_{line}": 1 - over}
 
-    mh, ma = M.sum(1), M.sum(0)                                  # home / away goal marginals
+    mh, ma = Ms.sum(1), Ms.sum(0)                                # scaled home / away goal marginals
     for line in (0.5, 1.5, 2.5):
         out[f"team_total_{line}"] = {
             f"HOME_OVER_{line}": float(mh[idx > line].sum()), f"HOME_UNDER_{line}": float(mh[idx < line].sum()),
             f"AWAY_OVER_{line}": float(ma[idx > line].sum()), f"AWAY_UNDER_{line}": float(ma[idx < line].sum()),
         }
 
-    btts_yes = float(M[1:, 1:].sum())
+    btts_yes = float(Ms[1:, 1:].sum())
     out["btts"] = {"YES": btts_yes, "NO": 1 - btts_yes}
 
-    # first half: independent Poisson on FH_SHARE of each side's goal rate
-    lh, mh_ = FH_SHARE * lam, FH_SHARE * mu
-    fact = np.array([factorial(int(x)) for x in idx], dtype=float)
-    ph = np.exp(-lh) * lh ** idx / fact
-    pa = np.exp(-mh_) * mh_ ** idx / fact
+    # first half: independent Poisson on FH_SHARE of the SCALED goal rate
+    ph = np.exp(-FH_SHARE * sl) * (FH_SHARE * sl) ** idx / fact
+    pa = np.exp(-FH_SHARE * sm) * (FH_SHARE * sm) ** idx / fact
     FH = np.outer(ph, pa); FH = FH / FH.sum()
     out["fh_result"] = {"HOME": float(FH[diff > 0].sum()), "DRAW": float(FH[diff == 0].sum()),
                         "AWAY": float(FH[diff < 0].sum())}
@@ -212,10 +221,10 @@ def market_probs(M: np.ndarray, lam: float, mu: float) -> dict[str, dict[str, fl
         ov = float(FH[tot > line].sum())
         out[f"fh_total_{line}"] = {f"OVER_{line}": ov, f"UNDER_{line}": 1 - ov}
 
-    p_none = float(M[0, 0]); rate = lam + mu
+    p_none = float(Ms[0, 0]); rate = sl + sm
     out["first_to_score"] = {
-        "HOME": (lam / rate) * (1 - p_none) if rate else 0.0,
-        "AWAY": (mu / rate) * (1 - p_none) if rate else 0.0, "NONE": p_none}
+        "HOME": (sl / rate) * (1 - p_none) if rate else 0.0,
+        "AWAY": (sm / rate) * (1 - p_none) if rate else 0.0, "NONE": p_none}
     return out
 
 
@@ -243,22 +252,32 @@ def _to_json(c: Candidate, verdict: Verdict, reason: str) -> BetJSON:
             "recommendation": verdict, "reason": reason}
 
 
+def _bet_eligible(c: Candidate) -> bool:
+    """Outcome/margin markets are always stakeable. Goal-SUM markets (totals/BTTS/team totals/
+    first half) are calibrated but we don't trust the model to beat the sharp totals line, so
+    they can be a 'bet' only on pure market value (a soft price beats Pinnacle); else lean."""
+    if not c.market.startswith(_SUM_DEPENDENT):
+        return True
+    return c.value_type == "market"
+
+
 def _verdict(c: Candidate) -> Verdict:
     if (c.edge >= MIN_EDGE and c.confidence != "low" and c.reliability >= MIN_RELIABILITY
-            and _bet_eligible(c.market)):
+            and _bet_eligible(c)):
         return "bet"
     return "lean" if c.edge >= LEAN_EDGE else "avoid"
 
 
 def _display_rank(c: Candidate) -> float:
-    pen = 1.0 if _bet_eligible(c.market) else 0.35     # uncalibrated sum-markets shown but downranked
+    pen = 1.0 if _bet_eligible(c) else 0.35            # non-value sum-markets shown but downranked
     return c.rank * pen
 
 
 def top_bets(candidates: list[Candidate], n: int = 5) -> list[BetJSON]:
     """The n best value selections for a game: positive edge, sane odds, de-correlated by side
     (one per team / over-under), ranked. Each labeled bet/lean/avoid honestly."""
-    pool = sorted([c for c in candidates if MIN_ODDS <= c.odds <= MAX_ODDS and c.edge > 0],
+    pool = sorted([c for c in candidates
+                   if MIN_ODDS <= c.odds <= MAX_ODDS and c.implied <= MAX_PROB and c.edge > 0],
                   key=_display_rank, reverse=True)
     picked: list[Candidate] = []; sides: set[str] = set()
     for c in pool:
@@ -275,10 +294,10 @@ def top_bets(candidates: list[Candidate], n: int = 5) -> list[BetJSON]:
 def recommend(game_id: str, candidates: list[Candidate]) -> GameJSON:
     """Filter -> de-correlate -> rank -> tier into <=3 bets, <=5 leans, rest avoid.
     Also emits topBets: the 5 best de-correlated selections for display."""
-    sane = [c for c in candidates if MIN_ODDS <= c.odds <= MAX_ODDS]
+    sane = [c for c in candidates if MIN_ODDS <= c.odds <= MAX_ODDS and c.implied <= MAX_PROB]
     qualifiers = sorted(
         [c for c in sane if c.edge >= MIN_EDGE and c.confidence != "low"
-         and c.reliability >= MIN_RELIABILITY and _bet_eligible(c.market)],
+         and c.reliability >= MIN_RELIABILITY and _bet_eligible(c)],
         key=lambda c: c.rank, reverse=True)
 
     bets: list[BetJSON] = []

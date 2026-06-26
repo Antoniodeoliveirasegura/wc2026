@@ -19,7 +19,7 @@ CACHE = os.path.join(_HERE, "odds_cache.json")
 ENV = os.path.join(_HERE, ".env")
 
 LINES_SPREAD = {0.5, 1.5, 2.5}
-LINES_TOTAL = {0.5, 1.5, 2.5, 3.5, 4.5}
+LINES_TOTAL = {1.5, 2.5, 3.5}    # 0.5/4.5 are near-certain & error-prone -> not ingested
 SHARP_BOOK = "pinnacle"          # the sharp benchmark — its de-vigged line ~= true probability
 
 # The Odds API team name -> our martj42 dataset name (only where they differ).
