@@ -372,43 +372,29 @@ def render_hindcast(data):
     summ = f'{exact}/{n} exact scores &middot; {ok}/{n} outcomes right ({ok / n:.0%})'
     return f'<div class="hcsum">{summ}</div><div class="hcgrid">' + "".join(cards) + "</div>"
 
-HTML_TEMPLATE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>2026 World Cup Forecast</title>
-<style>
+CSS = """<style>
 :root{--bg:#0e1116;--card:#161b22;--ink:#e6edf3;--muted:#8b949e;--accent:#3b82f6;--line:#21262d}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-.wrap{max-width:1060px;margin:0 auto;padding:36px 20px 72px}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:22px;align-items:start}
-.main{display:flex;flex-direction:column;gap:22px;min-width:0}
-.aside{min-width:0}
-@media(max-width:780px){.layout{grid-template-columns:1fr}}
-@media(max-width:640px){
-.wrap{padding:22px 13px 56px}
-h1{font-size:23px}.sub{font-size:13px;margin-bottom:8px}
-.card{padding:16px 13px}.card h2{font-size:13px}
-.bar{grid-template-columns:90px 1fr 40px;gap:8px;font-size:13px}
-.bar .nm img{margin-right:5px}
-table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
-th,td{padding:7px 4px;font-size:12.5px}.col-opt{display:none}
-.hcgrid{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}
-.pred{font-size:12px}
-}
+.nav{position:sticky;top:0;z-index:9;background:rgba(14,17,22,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav .inner{max-width:1060px;margin:0 auto;padding:0 20px;display:flex;gap:2px;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nav .brand{font-weight:700;margin-right:12px;white-space:nowrap;letter-spacing:-.01em}
+.nav a{padding:14px 13px;color:var(--muted);text-decoration:none;font-size:14px;font-weight:600;
+white-space:nowrap;border-bottom:2px solid transparent}
+.nav a.active{color:var(--ink);border-bottom-color:var(--accent)}.nav a:hover{color:var(--ink)}
+.wrap{max-width:1060px;margin:0 auto;padding:28px 20px 72px}
 h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--muted);margin:0 0 6px;font-size:14px}
 .phase{display:inline-block;background:#1f2937;color:#9fc5ff;font-size:12px;font-weight:600;
-padding:4px 11px;border-radius:999px;margin:0 0 26px}
+padding:4px 11px;border-radius:999px;margin:0 0 24px}
 h2{font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:22px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:22px;transition:border-color .15s}
 .bars{display:flex;flex-direction:column;gap:9px}
 .bar{display:grid;grid-template-columns:118px 1fr 50px;align-items:center;gap:12px;font-size:14px}
 .bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .track{background:#21262d;border-radius:6px;height:22px;overflow:hidden}
 .fill{display:block;background:linear-gradient(90deg,#2563eb,#60a5fa);height:100%;border-radius:6px}
-.nm img,td img,.mt img{border-radius:2px;vertical-align:-2px;margin-right:7px;box-shadow:0 0 0 .5px rgba(255,255,255,.12)}
+.nm img,td img,.mt img,.ghead img{border-radius:2px;vertical-align:-2px;margin-right:7px;box-shadow:0 0 0 .5px rgba(255,255,255,.12)}
 tbody tr{transition:background .12s}tbody tr:hover{background:rgba(255,255,255,.04)}
-.card{transition:border-color .15s}
 .v{text-align:right;font-variant-numeric:tabular-nums}
 table{width:100%;border-collapse:collapse;font-size:14px}.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
 th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
@@ -426,48 +412,151 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .hcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:8px}
 .hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0e1116;border:1px solid var(--line);border-radius:8px;padding:7px 11px}
 .hc .sc{font-weight:600;margin:0 3px}
-</style></head><body><div class="wrap">
-<h1>2026 World Cup forecast</h1>
-<p class="sub">__SUB__</p>
-<div class="phase">__PHASE__</div>
-<div class="layout">
-<div class="main">
-<div class="card"><h2>Title odds</h2><div class="bars">__BARS__</div></div>
-<div class="card"><h2>All teams — chance of reaching each stage</h2><div class="tbl"><table>
-<thead><tr><th>Team</th><th>Qualify</th><th>Champion</th><th class="col-opt">Final</th><th class="col-opt">Semi</th><th>R16</th></tr></thead>
-<tbody>__ROWS__</tbody></table></div></div>
-</div>
-<aside class="aside">
-<div class="card"><h2>Score predictions <span class="hint">by group &middot; green = exact</span></h2>__PREDS__</div>
-</aside>
-</div>
-<div class="card"><h2>Model hindcast <span class="hint">how it would have called games already played &middot; backtest, no hindsight</span></h2>__HINDCAST__</div>
-<p class="foot">__FOOT__</p>
-</div></body></html>"""
+.games{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.game{padding:16px 18px;margin:0}
+.ghead{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.ghead .vs{color:var(--muted);font-weight:400;margin:0 4px}
+.bet{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.bet:first-of-type{border-top:none}
+.bsel{display:flex;align-items:center;gap:8px;font-size:13.5px;min-width:0}
+.bmeta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
+.edge{color:var(--ink);font-variant-numeric:tabular-nums}.edge.pos{color:#3fb950}
+.vb{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.vb.bet{background:#10331f;color:#3fb950}.vb.lean{background:#3a2e14;color:#e3b341}.vb.avoid{background:#1c2128;color:#6e7681}
+.gfoot{color:var(--muted);font-size:11.5px;margin-top:10px}
+.note{background:#1a1f27;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
+@media(max-width:640px){
+.wrap{padding:20px 13px 56px}.nav .inner{padding:0 13px}
+h1{font-size:23px}.sub{font-size:13px}
+.card{padding:16px 13px}.card h2{font-size:13px}.game{padding:14px}
+.bar{grid-template-columns:90px 1fr 40px;gap:8px;font-size:13px}.bar .nm img{margin-right:5px}
+table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
+th,td{padding:7px 4px;font-size:12.5px}.col-opt{display:none}
+.hcgrid,.games{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}.pred{font-size:12px}
+.bmeta{font-size:11px;gap:6px}
+}
+</style>"""
 
-def write_site(teams, order, R, n_sims, phase, preds, hc, path):
-    champ = R["champ"]
-    pc = lambda c, i: f"{c[i] / n_sims:.1%}" if c[i] else "—"
-    mx = max(1, champ[order[0]])
+NAV = [("index.html", "Overview"), ("table.html", "All teams"),
+       ("scores.html", "Scores"), ("bets.html", "Bets")]
+
+
+def _page(active: str, title: str, body: str) -> str:
+    links = ""
+    for href, lbl in NAV:
+        cls = ' class="active"' if href == active else ""
+        links += f'<a href="{href}"{cls}>{lbl}</a>'
+    return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+            f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>'
+            f'{CSS}</head><body><div class="nav"><div class="inner">'
+            f'<span class="brand">WC2026</span>{links}</div></div>'
+            f'<div class="wrap">{body}</div></body></html>')
+
+
+def _hero(title: str, sub: str, phase: str) -> str:
+    return (f'<h1>{title}</h1><p class="sub">{sub}</p>'
+            + (f'<div class="phase">{phase}</div>' if phase else ""))
+
+
+def _pc(c, i, n):
+    return f"{c[i] / n:.1%}" if c[i] else "—"
+
+
+def render_overview(teams, order, R, n_sims, phase) -> str:
+    champ = R["champ"]; mx = max(1, champ[order[0]])
     bars = "".join(
         f'<div class="bar"><span class="nm">{flag(teams[i])}{teams[i]}</span>'
         f'<span class="track"><span class="fill" style="width:{champ[i]/mx*100:.0f}%"></span></span>'
-        f'<span class="v">{pc(champ, i)}</span></div>' for i in order[:12])
+        f'<span class="v">{_pc(champ, i, n_sims)}</span></div>' for i in order[:12])
+    sub = ("Dixon-Coles + connectivity-weighted squad value, blended with Elo, altitude-aware "
+           f"&middot; {n_sims:,} Monte-Carlo runs")
+    foot = ('<p class="foot">A calibrated distribution, not a single pick &mdash; the favourite '
+            'tops out ~16%. See <a href="table.html" style="color:#60a5fa">all teams</a>.</p>')
+    return (_hero("2026 World Cup forecast", sub, phase)
+            + f'<div class="card"><h2>Title odds <span class="hint">top 12</span></h2>'
+            f'<div class="bars">{bars}</div>{foot}</div>')
+
+
+def render_table(teams, order, R, n_sims, phase) -> str:
     rows = "".join(
-        f"<tr><td>{flag(teams[i])}{teams[i]}</td><td>{pc(R['qualify'],i)}</td><td>{pc(champ,i)}</td>"
-        f"<td class='col-opt'>{pc(R['final'],i)}</td><td class='col-opt'>{pc(R['sf'],i)}</td><td>{pc(R['r16'],i)}</td></tr>"
+        f"<tr><td>{flag(teams[i])}{teams[i]}</td><td>{_pc(R['qualify'],i,n_sims)}</td>"
+        f"<td>{_pc(R['champ'],i,n_sims)}</td><td class='col-opt'>{_pc(R['final'],i,n_sims)}</td>"
+        f"<td class='col-opt'>{_pc(R['sf'],i,n_sims)}</td><td>{_pc(R['r16'],i,n_sims)}</td></tr>"
         for i in order)
-    sub = ("Dixon-Coles + connectivity-weighted squad value, blended with Elo &middot; simulates "
-           f"the rest of the tournament &middot; {n_sims:,} Monte-Carlo runs")
-    foot = ("A calibrated distribution, not a single pick. Updates automatically as results "
-            "come in. Built from free historical results + Transfermarkt squad values.")
-    html = (HTML_TEMPLATE.replace("__SUB__", sub).replace("__PHASE__", phase)
-            .replace("__BARS__", bars).replace("__ROWS__", rows).replace("__FOOT__", foot)
-            .replace("__PREDS__", render_preds(preds))
-            .replace("__HINDCAST__", render_hindcast(hc)))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(html)
+    return (_hero("All teams", "Chance of reaching each stage", phase)
+            + '<div class="card"><div class="tbl"><table><thead><tr><th>Team</th><th>Qualify</th>'
+            '<th>Champion</th><th class="col-opt">Final</th><th class="col-opt">Semi</th><th>R16</th>'
+            f'</tr></thead><tbody>{rows}</tbody></table></div></div>')
+
+
+def render_scores(preds, hc, phase) -> str:
+    return (_hero("Scores", "Predicted scorelines and model backtest", phase)
+            + '<div class="card"><h2>Score predictions <span class="hint">by group &middot; '
+            f'green = exact</span></h2>{render_preds(preds)}</div>'
+            + '<div class="card"><h2>Model hindcast <span class="hint">how it would have called '
+            f'played games &middot; no hindsight</span></h2>{render_hindcast(hc)}</div>')
+
+
+def render_bets() -> str | None:
+    """Bake bets.json (from recommend_bets.py) into a static page. None if no data yet."""
+    path = os.path.join(os.path.dirname(__file__), "bets.json")
+    if not os.path.exists(path):
+        return None
+    d = json.load(open(path, encoding="utf-8"))
+    games = [g for g in d.get("games", []) if g.get("topBets")]
+    cards = []
+    for g in games:
+        rows = []
+        for b in g["topBets"]:
+            v = b["recommendation"]
+            rows.append(
+                f'<div class="bet"><span class="bsel"><span class="vb {v}">{v}</span>{b["selection"]}</span>'
+                f'<span class="bmeta"><b class="edge{" pos" if b["edge"] > 0 else ""}">'
+                f'{b["edge"]*100:+.0f}%</b><span>{b["modelProbability"]*100:.0f}% vs '
+                f'{b["sportsbookImpliedProbability"]*100:.0f}%</span><span>{b["confidence"]}</span></span></div>')
+        cards.append(
+            f'<div class="card game"><div class="ghead">{flag(g["home"])}{short(g["home"])}'
+            f'<span class="vs">v</span>{flag(g["away"])}{short(g["away"])}</div>{"".join(rows)}'
+            f'<div class="gfoot">{g.get("avoidsCount", 0)} other markets screened out</div></div>')
+    note = ('<div class="note"><b>Edge</b> = model probability &minus; the book&rsquo;s implied '
+            'probability (best price across books). Top 5 de-correlated picks per game. '
+            '<b>Totals &amp; BTTS markets show as leans only</b> &mdash; the model&rsquo;s goal totals '
+            'aren&rsquo;t calibrated yet, so they aren&rsquo;t staked as bets. No historical odds = '
+            'not ROI-backtested. Informational, not betting advice.</div>')
+    head = _hero("Value bets", "Model probabilities vs live sportsbook odds",
+                 f'updated {d.get("generatedAt", "")}')
+    body = (head + note + (f'<div class="games">{"".join(cards)}</div>' if cards
+            else '<div class="card"><p style="color:var(--muted);margin:0">No positive-edge '
+                 'bets in the current slate.</p></div>'))
+    return body
+
+
+def _bets_placeholder() -> str:
+    return (_hero("Value bets", "Model probabilities vs live sportsbook odds", "")
+            + '<div class="card"><p style="color:var(--muted);margin:0">No bets generated yet. '
+            'Run <code>python recommend_bets.py</code> (needs ODDS_API_KEY) to populate this page.</p></div>')
+
+
+def write_site(teams, order, R, n_sims, phase, preds, hc, docsdir):
+    os.makedirs(docsdir, exist_ok=True)
+    pages = {
+        "index.html": ("2026 World Cup Forecast", render_overview(teams, order, R, n_sims, phase)),
+        "table.html": ("All teams - WC2026", render_table(teams, order, R, n_sims, phase)),
+        "scores.html": ("Scores - WC2026", render_scores(preds, hc, phase)),
+    }
+    for fname, (title, body) in pages.items():
+        with open(os.path.join(docsdir, fname), "w", encoding="utf-8") as f:
+            f.write(_page(fname, title, body))
+    # Bets: bake bets.json if present; else only write a placeholder if no page exists yet
+    # (so a CI run without bets.json never clobbers a previously committed bets page).
+    bets_body = render_bets()
+    bets_path = os.path.join(docsdir, "bets.html")
+    if bets_body is not None:
+        with open(bets_path, "w", encoding="utf-8") as f:
+            f.write(_page("bets.html", "Value bets - WC2026", bets_body))
+    elif not os.path.exists(bets_path):
+        with open(bets_path, "w", encoding="utf-8") as f:
+            f.write(_page("bets.html", "Value bets - WC2026", _bets_placeholder()))
 
 if __name__ == "__main__":
     df = wc.load()
@@ -539,7 +628,7 @@ if __name__ == "__main__":
     preds = update_and_grade(m, zmap, confmap, rem, gdf, groups)
     hc = hindcast(df, wcdf)
     write_site(teams, order, R, N_SIMS, phase, preds, hc,
-               os.path.join(os.path.dirname(__file__), "docs", "index.html"))
+               os.path.join(os.path.dirname(__file__), "docs"))
 
     assert abs(sum(R["champ"].values()) - N_SIMS) < 1
-    print(f"\nwrote forecast.md + docs/index.html | {phase}")
+    print(f"\nwrote forecast.md + docs/ (overview, table, scores, bets) | {phase}")

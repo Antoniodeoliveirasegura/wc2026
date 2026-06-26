@@ -7,3 +7,7 @@ shootouts.csv
 *.pkl
 *_out.txt
 .venv/
+.env
+bets.json
+odds_cache.json
+.claude/
