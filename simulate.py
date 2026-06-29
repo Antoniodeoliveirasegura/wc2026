@@ -335,17 +335,25 @@ def pre_wc_model(df):
     return pm
 
 def hindcast(df, wcdf):
-    """How a pre-tournament model would have called each played WC game (argmax score).
-    Also a forced-winner view: ignore the draw, lean to the likelier winner, and score that
-    lean only on games that actually had a winner (you can't pick a winner of a real draw)."""
+    """How a pre-tournament model would have called each played WC game (argmax score),
+    split into GROUP and KNOCKOUT stages. Knockout games that ended level were decided on
+    penalties, so their true winner is read from shootouts.csv (a level score there is NOT
+    a draw). Each stage also gets a forced-winner view: ignore the draw, lean to the likelier
+    winner, scored only on games that had a winner (every knockout does -> someone advances)."""
     pm = pre_wc_model(df)
     zmap, confmap = mvmod.setup(pm)
-    rows, exact, ok = [], 0, 0
-    dec_ok = dec_n = 0                       # forced-winner lean accuracy on decisive actual games
+    _, kdf = split_games(wcdf)
+    ko_keys = {(r.date.strftime("%Y-%m-%d"), frozenset((r.home_team, r.away_team)))
+               for r in kdf.itertuples(index=False)}
+    shoot = load_shootouts()
+    blank = lambda: {"rows": [], "exact": 0, "ok": 0, "dec_ok": 0, "dec_n": 0}
+    stages = {"group": blank(), "knockout": blank()}
     for r in wcdf.sort_values("date").itertuples(index=False):
         h, a = r.home_team, r.away_team
         if h not in pm["idx"] or a not in pm["idx"]:
             continue
+        key = (r.date.strftime("%Y-%m-%d"), frozenset((h, a)))
+        is_ko = key in ko_keys
         M = wc.score_matrix(mvmod.mv_adjust(pm, zmap, confmap, h, a), h, a,
                             neutral=bool(r.neutral), maxg=MAXG)
         pi, pj = (int(x) for x in np.unravel_index(int(np.argmax(M)), M.shape))
@@ -354,16 +362,22 @@ def hindcast(df, wcdf):
         lean = h if pwin_h >= pwin_a else a                  # the team it'd back if forced to choose
         lean_p = max(pwin_h, pwin_a)
         hs, as_ = int(r.home_score), int(r.away_score)
+        winner = h if hs > as_ else a if as_ > hs else (shoot.get(key) if is_ko else None)
+        pens = is_ko and hs == as_ and winner is not None
+        res = 0 if winner is None else (1 if winner == h else -1)
+        pres = (pi > pj) - (pi < pj)
         is_exact = (pi == hs and pj == as_)
-        res, pres = (hs > as_) - (hs < as_), (pi > pj) - (pi < pj)
-        exact += is_exact; ok += (res == pres)
-        lean_ok = res != 0 and lean == (h if hs > as_ else a)
-        if res != 0:                                         # actual game had a winner
-            dec_n += 1; dec_ok += lean_ok
-        rows.append({"home": h, "away": a, "ph": pi, "pa": pj, "ah": hs, "aa": as_,
-                     "exact": is_exact, "ok": res == pres, "lean": lean, "lean_p": lean_p,
-                     "lean_ok": lean_ok, "actual_draw": res == 0})
-    return rows, exact, ok, len(rows), dec_ok, dec_n
+        lean_ok = winner is not None and lean == winner
+        st = stages["knockout" if is_ko else "group"]
+        st["exact"] += is_exact; st["ok"] += (res == pres)
+        if winner is not None:
+            st["dec_n"] += 1; st["dec_ok"] += lean_ok
+        st["rows"].append({"home": h, "away": a, "ph": pi, "pa": pj, "ah": hs, "aa": as_,
+                           "exact": is_exact, "ok": res == pres, "lean": lean, "lean_p": lean_p,
+                           "lean_ok": lean_ok, "actual_draw": res == 0, "pens": pens,
+                           "winner": winner})
+    return {k: (v["rows"], v["exact"], v["ok"], len(v["rows"]), v["dec_ok"], v["dec_n"])
+            for k, v in stages.items()}
 
 def render_hindcast(data):
     rows, exact, ok, n, dec_ok, dec_n = data
@@ -379,6 +393,8 @@ def render_hindcast(data):
             cls = "" if r["actual_draw"] else (" lean-ok" if r["lean_ok"] else " lean-no")
             match += (f'<span class="lean{cls}">&rarr; {short(r["lean"])} '
                       f'{r["lean_p"]*100:.0f}%</span>')
+        if r.get("pens"):                       # level after ET -> advanced on penalties
+            match += f'<span class="lean">pens: {short(r["winner"])}</span>'
         if r["exact"]:
             badge = '<span class="badge b-ok">&#10003; exact</span>'
         elif r["ok"]:
@@ -514,11 +530,16 @@ def render_table(teams, order, R, n_sims, phase) -> str:
 
 
 def render_scores(preds, hc, phase) -> str:
+    ko = hc["knockout"]
+    ko_hint = ("someone advances &middot; penalty shootouts resolved" if ko[3]
+               else "starts once the round of 32 kicks off")
     return (_hero("Scores", "Predicted scorelines and model backtest", phase)
             + '<div class="card"><h2>Score predictions <span class="hint">by group &middot; '
             f'green = exact</span></h2>{render_preds(preds)}</div>'
-            + '<div class="card"><h2>Model hindcast <span class="hint">how it would have called '
-            f'played games &middot; no hindsight</span></h2>{render_hindcast(hc)}</div>')
+            + '<div class="card"><h2>Group hindcast <span class="hint">how it would have called '
+            f'played games &middot; no hindsight</span></h2>{render_hindcast(hc["group"])}</div>'
+            + f'<div class="card"><h2>Knockout hindcast <span class="hint">{ko_hint}</span></h2>'
+            f'{render_hindcast(ko)}</div>')
 
 
 def _kickoff(iso: str | None) -> str:
