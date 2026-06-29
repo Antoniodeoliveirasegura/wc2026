@@ -45,6 +45,8 @@ FH_SHARE = 0.45          # share of a match's goals expected in the first half (
 GOAL_SCALE = 1.30
 _SUM_DEPENDENT = ("total_", "team_total_", "btts", "fh_total_")
 
+ET_SHARE = 1 / 3         # extra time is 30 of 90 minutes -> a third of the goal rate
+
 # weights for the ranking score (edge-dominant; others break ties)
 W_EDGE, W_KELLY, W_CONF, W_REL, W_MKT = 3.0, 1.0, 0.10, 0.05, 2.0
 
@@ -228,6 +230,26 @@ def market_probs(M: np.ndarray, lam: float, mu: float) -> dict[str, dict[str, fl
     return out
 
 
+def advance_probs(M: np.ndarray, lam: float, mu: float) -> dict[str, float]:
+    """Knockout: who wins the TIE (incl. extra time + penalties), not the 90' result.
+    The 90' draw mass is redistributed by who'd survive the ET+pens mini-game: ET is
+    modeled as ET_SHARE of the regulation goal rate (independent Poisson), and a
+    still-level ET goes to a coin-flip shootout.
+    Returns {"HOME","AWAY"} probabilities to advance (sum == 1)."""
+    idx = np.arange(M.shape[0])
+    diff = idx[:, None] - idx[None, :]
+    ph, pd, pa = float(M[diff > 0].sum()), float(M[diff == 0].sum()), float(M[diff < 0].sum())
+    fact = np.array([factorial(int(x)) for x in idx], dtype=float)
+    el, em = ET_SHARE * lam, ET_SHARE * mu
+    eh = np.exp(-el) * el ** idx / fact
+    ea = np.exp(-em) * em ** idx / fact
+    ET = np.outer(eh, ea); ET = ET / ET.sum()
+    et_home, et_draw = float(ET[diff > 0].sum()), float(ET[diff == 0].sum())
+    q_home = et_home + 0.5 * et_draw          # ponytail: pens are a 50/50 coin flip; swap in a
+                                              # skill-weighted shootout edge if it ever matters
+    return {"HOME": ph + pd * q_home, "AWAY": pa + pd * (1 - q_home)}
+
+
 # ----------------------------------------------------------------- recommendation logic
 def _reason(c: Candidate, decorrelated_from: str | None) -> str:
     if c.value_type == "market":
@@ -358,3 +380,17 @@ if __name__ == "__main__":
     assert len(para_bets) <= 1, "correlated Paraguay bets not de-duplicated"
     assert all(b["edge"] >= MIN_EDGE for b in out["recommendedBets"]), "a bet slipped under min edge"
     print("self-check ok: hard filter + de-correlation + caps hold")
+
+    # advance_probs: redistribute the 90' draw into who wins the tie (ET + pens)
+    lam, mu = 1.6, 1.0                                   # home favored
+    M = np.outer(np.exp(-lam) * lam ** np.arange(11) / np.array([factorial(i) for i in range(11)]),
+                 np.exp(-mu) * mu ** np.arange(11) / np.array([factorial(i) for i in range(11)]))
+    M = M / M.sum()
+    adv = advance_probs(M, lam, mu)
+    idx = np.arange(11); d = idx[:, None] - idx[None, :]
+    ph, pa = float(M[d > 0].sum()), float(M[d < 0].sum())
+    assert abs(adv["HOME"] + adv["AWAY"] - 1.0) < 1e-9, "advance probs must sum to 1 (no draw)"
+    assert adv["HOME"] > ph and adv["AWAY"] > pa, "advance must absorb draw mass for both sides"
+    assert adv["HOME"] > adv["AWAY"], "stronger side should be likelier to advance"
+    print(f"advance self-check ok: HOME {adv['HOME']:.0%} / AWAY {adv['AWAY']:.0%} "
+          f"(from 90' {ph:.0%}/{1-ph-pa:.0%} draw/{pa:.0%})")

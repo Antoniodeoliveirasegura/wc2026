@@ -335,10 +335,13 @@ def pre_wc_model(df):
     return pm
 
 def hindcast(df, wcdf):
-    """How a pre-tournament model would have called each played WC game (argmax score)."""
+    """How a pre-tournament model would have called each played WC game (argmax score).
+    Also a forced-winner view: ignore the draw, lean to the likelier winner, and score that
+    lean only on games that actually had a winner (you can't pick a winner of a real draw)."""
     pm = pre_wc_model(df)
     zmap, confmap = mvmod.setup(pm)
     rows, exact, ok = [], 0, 0
+    dec_ok = dec_n = 0                       # forced-winner lean accuracy on decisive actual games
     for r in wcdf.sort_values("date").itertuples(index=False):
         h, a = r.home_team, r.away_team
         if h not in pm["idx"] or a not in pm["idx"]:
@@ -346,16 +349,24 @@ def hindcast(df, wcdf):
         M = wc.score_matrix(mvmod.mv_adjust(pm, zmap, confmap, h, a), h, a,
                             neutral=bool(r.neutral), maxg=MAXG)
         pi, pj = (int(x) for x in np.unravel_index(int(np.argmax(M)), M.shape))
+        idx = np.arange(M.shape[0]); diff = idx[:, None] - idx[None, :]
+        pwin_h, pwin_a = float(M[diff > 0].sum()), float(M[diff < 0].sum())
+        lean = h if pwin_h >= pwin_a else a                  # the team it'd back if forced to choose
+        lean_p = max(pwin_h, pwin_a)
         hs, as_ = int(r.home_score), int(r.away_score)
         is_exact = (pi == hs and pj == as_)
         res, pres = (hs > as_) - (hs < as_), (pi > pj) - (pi < pj)
         exact += is_exact; ok += (res == pres)
+        lean_ok = res != 0 and lean == (h if hs > as_ else a)
+        if res != 0:                                         # actual game had a winner
+            dec_n += 1; dec_ok += lean_ok
         rows.append({"home": h, "away": a, "ph": pi, "pa": pj, "ah": hs, "aa": as_,
-                     "exact": is_exact, "ok": res == pres})
-    return rows, exact, ok, len(rows)
+                     "exact": is_exact, "ok": res == pres, "lean": lean, "lean_p": lean_p,
+                     "lean_ok": lean_ok, "actual_draw": res == 0})
+    return rows, exact, ok, len(rows), dec_ok, dec_n
 
 def render_hindcast(data):
-    rows, exact, ok, n = data
+    rows, exact, ok, n, dec_ok, dec_n = data
     if not n:
         return "<p style='color:var(--muted);font-size:13px'>No games played yet.</p>"
     cards = []
@@ -363,6 +374,11 @@ def render_hindcast(data):
         match = (f'{flag(r["home"])}{short(r["home"])} '
                  f'<b class="sc">{r["ph"]}&ndash;{r["pa"]}</b> '
                  f'{flag(r["away"])}{short(r["away"])}')
+        # when the predicted scoreline is a draw, show who it'd back if forced to call a winner
+        if r["ph"] == r["pa"]:
+            cls = "" if r["actual_draw"] else (" lean-ok" if r["lean_ok"] else " lean-no")
+            match += (f'<span class="lean{cls}">&rarr; {short(r["lean"])} '
+                      f'{r["lean_p"]*100:.0f}%</span>')
         if r["exact"]:
             badge = '<span class="badge b-ok">&#10003; exact</span>'
         elif r["ok"]:
@@ -371,6 +387,9 @@ def render_hindcast(data):
             badge = f'<span class="badge b-no">{r["ah"]}&ndash;{r["aa"]}</span>'
         cards.append(f'<div class="hc"><span>{match}</span>{badge}</div>')
     summ = f'{exact}/{n} exact scores &middot; {ok}/{n} outcomes right ({ok / n:.0%})'
+    if dec_n:
+        summ += (f'<br>Forced winner (draw ignored): <b>{dec_ok}/{dec_n} right '
+                 f'({dec_ok / dec_n:.0%})</b> on games that had a winner')
     return f'<div class="hcsum">{summ}</div><div class="hcgrid">' + "".join(cards) + "</div>"
 
 CSS = """<style>
@@ -413,6 +432,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .hcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:8px}
 .hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0e1116;border:1px solid var(--line);border-radius:8px;padding:7px 11px}
 .hc .sc{font-weight:600;margin:0 3px}
+.hc .lean{color:var(--muted);font-size:11px;margin-left:5px;white-space:nowrap}.hc .lean-ok{color:#3fb950}.hc .lean-no{color:#f85149}
 .games{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
 .game{padding:16px 18px;margin:0}
 .ghead{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
@@ -427,6 +447,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .vb.mkt{background:#102a3a;color:#60a5fa}
 .gfoot{color:var(--muted);font-size:11.5px;margin-top:10px}
 .gkick{font-size:11.5px;color:#9fc5ff;font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
+.gadv{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink)}
 .note{background:#1a1f27;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
 @media(max-width:640px){
 .wrap{padding:20px 13px 56px}.nav .inner{padding:0 13px}
@@ -530,10 +551,15 @@ def render_bets() -> str | None:
                 f'{b["edge"]*100:+.0f}%</b><span>{b["modelProbability"]*100:.0f}% vs '
                 f'{b["sportsbookImpliedProbability"]*100:.0f}%</span><span>{b["confidence"]}</span></span></div>')
         kick = _kickoff(g.get("commence"))
+        adv = g.get("advance")
+        adv_line = (f'<div class="gadv">To advance &middot; {short(g["home"])} '
+                    f'<b>{adv["HOME"]*100:.0f}%</b> &middot; {short(g["away"])} '
+                    f'<b>{adv["AWAY"]*100:.0f}%</b></div>') if adv else ""
         cards.append(
             f'<div class="card game"><div class="ghead">{flag(g["home"])}{short(g["home"])}'
             f'<span class="vs">v</span>{flag(g["away"])}{short(g["away"])}</div>'
             + (f'<div class="gkick">{kick}</div>' if kick else "")
+            + adv_line
             + f'{"".join(rows)}'
             f'<div class="gfoot">{g.get("avoidsCount", 0)} other markets screened out</div></div>')
     note = ('<div class="note"><b>Edge</b> = model probability &minus; <b>Pinnacle&rsquo;s '

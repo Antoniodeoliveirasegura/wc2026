@@ -131,7 +131,8 @@ if __name__ == "__main__":
         gid = f"{home}-{away}".lower().replace(" ", "-")
         rec = bet.recommend(gid, candidates_for(home, away, M, lam, mu,
                                                 info["best"], info["sharp"]))
-        rec.update(home=home, away=away, commence=info.get("commence"))
+        rec.update(home=home, away=away, commence=info.get("commence"),
+                   advance=bet.advance_probs(M, lam, mu))   # knockout: who wins the tie (ET+pens)
         out.append(rec)
 
     out.sort(key=lambda r: (-len(r["recommendedBets"]),
