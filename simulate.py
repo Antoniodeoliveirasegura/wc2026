@@ -16,6 +16,7 @@ import pandas as pd
 import wc_model as wc
 import marketvalue as mvmod
 import altitude as altmod
+import betting as bet
 import clv
 
 random.seed(0)
@@ -264,6 +265,45 @@ def predict_score(m, zmap, confmap, a, b):
 def pred_key(a, b):
     return "|".join(sorted((a, b)))
 
+ROUND_BY_COUNT = {16: "Round of 32", 8: "Round of 16", 4: "Quarter-finals",
+                  2: "Semi-finals", 1: "Final"}
+
+def upcoming_knockout(df):
+    """Scheduled-but-unplayed knockout ties from the raw results file (wc.load drops unscored
+    rows). A fixture is a knockout once both teams have their 3 group games behind them, so this
+    self-extends round by round as the source posts each round's fixtures."""
+    played = collections.Counter()
+    for r in wc_games(df).itertuples(index=False):
+        played[r.home_team] += 1; played[r.away_team] += 1
+    raw = pd.read_csv(wc.DATA)
+    f = raw[(raw.date >= "2026-06-01") & (raw.tournament == "FIFA World Cup")
+            & (raw.home_score.isna() | raw.away_score.isna())]
+    out = []
+    for r in f.sort_values("date").itertuples(index=False):
+        if played.get(r.home_team, 0) >= 3 and played.get(r.away_team, 0) >= 3:
+            out.append({"a": r.home_team, "b": r.away_team,
+                        "city": getattr(r, "city", "") or "", "date": str(r.date)[:10]})
+    return out
+
+def predict_knockout(m, zmap, confmap, fixtures):
+    """For each upcoming knockout tie: the most-likely 90' scoreline AND who the model backs
+    to ADVANCE (regulation + ET + pens via betting.advance_probs) — since someone must win."""
+    idx = np.arange(MAXG + 1)
+    rows = []
+    for fx in fixtures:
+        a, b, city = fx["a"], fx["b"], fx["city"]
+        if a not in m["idx"] or b not in m["idx"]:
+            continue
+        adj = altmod.alt_adjust(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, city)
+        M = wc.score_matrix(adj, a, b, neutral=True, maxg=MAXG)
+        pi, pj = (int(x) for x in np.unravel_index(int(np.argmax(M)), M.shape))
+        lam = float((M.sum(1) * idx).sum()); mu = float((M.sum(0) * idx).sum())
+        adv = bet.advance_probs(M, lam, mu)
+        winner = a if adv["HOME"] >= adv["AWAY"] else b
+        rows.append({"a": a, "b": b, "pa": pi, "pb": pj, "date": fx["date"],
+                     "winner": winner, "win_p": max(adv["HOME"], adv["AWAY"])})
+    return rows
+
 def update_and_grade(m, zmap, confmap, rem, gdf, groups):
     """Lock a predicted score for each UPCOMING game (never overwritten -> only ever
     before kickoff). Organise every group game BY GROUP: played games show the result
@@ -478,7 +518,7 @@ th,td{padding:7px 4px;font-size:12.5px}.col-opt{display:none}
 </style>"""
 
 NAV = [("index.html", "Overview"), ("table.html", "All teams"),
-       ("scores.html", "Scores"), ("bets.html", "Bets")]
+       ("scores.html", "Group scores"), ("knockout.html", "Knockout"), ("bets.html", "Bets")]
 
 
 def _page(active: str, title: str, body: str) -> str:
@@ -530,14 +570,36 @@ def render_table(teams, order, R, n_sims, phase) -> str:
 
 
 def render_scores(preds, hc, phase) -> str:
-    ko = hc["knockout"]
-    ko_hint = ("someone advances &middot; penalty shootouts resolved" if ko[3]
-               else "starts once the round of 32 kicks off")
-    return (_hero("Scores", "Predicted scorelines and model backtest", phase)
+    return (_hero("Group stage scores", "Predicted scorelines and group backtest", phase)
             + '<div class="card"><h2>Score predictions <span class="hint">by group &middot; '
             f'green = exact</span></h2>{render_preds(preds)}</div>'
             + '<div class="card"><h2>Group hindcast <span class="hint">how it would have called '
-            f'played games &middot; no hindsight</span></h2>{render_hindcast(hc["group"])}</div>'
+            f'played games &middot; no hindsight</span></h2>{render_hindcast(hc["group"])}</div>')
+
+
+def render_knockout_preds(rows):
+    if not rows:
+        return ("<p style='color:var(--muted);font-size:13px;margin:0'>Knockout ties appear "
+                "here once the bracket is set.</p>")
+    title = ROUND_BY_COUNT.get(len(rows), "Knockout ties")
+    out = [f'<div class="grp first">{title}</div>']
+    for r in rows:
+        match = (f'<span class="mt">{flag(r["a"])}{short(r["a"])}</span> '
+                 f'<span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
+                 f'<span class="mt">{flag(r["b"])}{short(r["b"])}</span>')
+        adv = (f'<span class="badge b-amber">&rarr; {short(r["winner"])} '
+               f'{r["win_p"]*100:.0f}%</span>')
+        out.append(f'<div class="pred"><span>{match}</span>{adv}</div>')
+    return '<div class="preds">' + "".join(out) + "</div>"
+
+
+def render_knockout(ko_preds, hc, phase) -> str:
+    ko = hc["knockout"]
+    ko_hint = ("someone advances &middot; penalty shootouts resolved" if ko[3]
+               else "fills in as ties are played")
+    return (_hero("Knockout scores", "Predicted ties and knockout backtest", phase)
+            + '<div class="card"><h2>Tie predictions <span class="hint">most-likely 90&prime; score '
+            f'&middot; who advances</span></h2>{render_knockout_preds(ko_preds)}</div>'
             + f'<div class="card"><h2>Knockout hindcast <span class="hint">{ko_hint}</span></h2>'
             f'{render_hindcast(ko)}</div>')
 
@@ -614,12 +676,13 @@ def _bets_placeholder() -> str:
             'Run <code>python recommend_bets.py</code> (needs ODDS_API_KEY) to populate this page.</p></div>')
 
 
-def write_site(teams, order, R, n_sims, phase, preds, hc, docsdir):
+def write_site(teams, order, R, n_sims, phase, preds, hc, ko_preds, docsdir):
     os.makedirs(docsdir, exist_ok=True)
     pages = {
         "index.html": ("2026 World Cup Forecast", render_overview(teams, order, R, n_sims, phase)),
         "table.html": ("All teams - WC2026", render_table(teams, order, R, n_sims, phase)),
-        "scores.html": ("Scores - WC2026", render_scores(preds, hc, phase)),
+        "scores.html": ("Group scores - WC2026", render_scores(preds, hc, phase)),
+        "knockout.html": ("Knockout scores - WC2026", render_knockout(ko_preds, hc, phase)),
     }
     for fname, (title, body) in pages.items():
         with open(os.path.join(docsdir, fname), "w", encoding="utf-8") as f:
@@ -704,8 +767,9 @@ if __name__ == "__main__":
         fh.write("\n".join(lines) + "\n")
     preds = update_and_grade(m, zmap, confmap, rem, gdf, groups)
     hc = hindcast(df, wcdf)
-    write_site(teams, order, R, N_SIMS, phase, preds, hc,
+    ko_preds = predict_knockout(m, zmap, confmap, upcoming_knockout(df))
+    write_site(teams, order, R, N_SIMS, phase, preds, hc, ko_preds,
                os.path.join(os.path.dirname(__file__), "docs"))
 
     assert abs(sum(R["champ"].values()) - N_SIMS) < 1
-    print(f"\nwrote forecast.md + docs/ (overview, table, scores, bets) | {phase}")
+    print(f"\nwrote forecast.md + docs/ (overview, table, group, knockout, bets) | {phase}")
