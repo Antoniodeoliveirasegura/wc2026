@@ -25,6 +25,11 @@ SHOOT_URL = "https://raw.githubusercontent.com/martj42/international_results/mas
 SHOOT_FILE = os.path.join(os.path.dirname(__file__), "shootouts.csv")
 N_SIMS = 20000
 HOSTS = {"United States", "Canada", "Mexico"}
+# Knockout home edge is venue-accurate: in the sim, future knockout venues aren't pinned, but in
+# practice the US hosts essentially every knockout tie (Canada's R32 is already in the US; Mexico's
+# only home knockout slot is the Azteca R32/R16, handled separately via A_azteca). So the base
+# advantage matrix grants a home edge to the US only; the Azteca matrix adds Mexico.
+KO_HOME = frozenset({"United States"})
 MAXG = 8
 WC_START = pd.Timestamp("2026-06-11")
 PRE_WC_CACHE = os.path.join(os.path.dirname(__file__), "pre_wc_model.pkl")
@@ -98,7 +103,7 @@ def score_dist(m, zmap, confmap, a, b, city=""):
     cum = np.cumsum(M.flatten()); cum = cum / cum[-1]
     return cells, cum
 
-def adv_matrix(m, teams, zmap, confmap, elo_predict, city=""):
+def adv_matrix(m, teams, zmap, confmap, elo_predict, city="", home_nations=KO_HOME):
     """P(a beats b) for every ordered pair, used by the knockout sims. W/D/L is the
     DC+squad-value model geometrically blended with Elo (wc.geo_blend; validated
     -0.0035 RPS). Host edge applies in non-neutral framings exactly as before.
@@ -113,7 +118,7 @@ def adv_matrix(m, teams, zmap, confmap, elo_predict, city=""):
             if a == b:
                 continue
             ta, tb = teams[a], teams[b]
-            ah, bh = ta in HOSTS, tb in HOSTS
+            ah, bh = ta in home_nations, tb in home_nations
             if bh and not ah:                                   # tb hosts -> frame in tb's home
                 H, D, Aw = blended(tb, ta, neutral=False)
                 A[a][b] = Aw + 0.5 * D                          # ta is the away side here
@@ -282,7 +287,8 @@ def upcoming_knockout(df):
     for r in f.sort_values("date").itertuples(index=False):
         if played.get(r.home_team, 0) >= 3 and played.get(r.away_team, 0) >= 3:
             out.append({"a": r.home_team, "b": r.away_team,
-                        "city": getattr(r, "city", "") or "", "date": str(r.date)[:10]})
+                        "city": getattr(r, "city", "") or "", "date": str(r.date)[:10],
+                        "country": getattr(r, "country", "") or ""})
     return out
 
 def predict_knockout(m, zmap, confmap, fixtures):
@@ -291,17 +297,25 @@ def predict_knockout(m, zmap, confmap, fixtures):
     idx = np.arange(MAXG + 1)
     rows = []
     for fx in fixtures:
-        a, b, city = fx["a"], fx["b"], fx["city"]
+        a, b, city, country = fx["a"], fx["b"], fx["city"], fx.get("country", "")
         if a not in m["idx"] or b not in m["idx"]:
             continue
-        adj = altmod.alt_adjust(mvmod.mv_adjust(m, zmap, confmap, a, b), a, b, city)
-        M = wc.score_matrix(adj, a, b, neutral=True, maxg=MAXG)
+        # host advantage is venue-accurate: a host nation is "home" only when the tie is actually
+        # in its country (Canada playing in the US gets no edge). Else neutral.
+        host = a if (a in HOSTS and country == a) else b if (b in HOSTS and country == b) else None
+        home, away = (host, b if host == a else a) if host else (a, b)
+        adj = altmod.alt_adjust(mvmod.mv_adjust(m, zmap, confmap, home, away), home, away, city)
+        M = wc.score_matrix(adj, home, away, neutral=host is None, maxg=MAXG)
         pi, pj = (int(x) for x in np.unravel_index(int(np.argmax(M)), M.shape))
         lam = float((M.sum(1) * idx).sum()); mu = float((M.sum(0) * idx).sum())
-        adv = bet.advance_probs(M, lam, mu)
-        winner = a if adv["HOME"] >= adv["AWAY"] else b
-        rows.append({"a": a, "b": b, "pa": pi, "pb": pj, "date": fx["date"],
-                     "winner": winner, "win_p": max(adv["HOME"], adv["AWAY"])})
+        adv = bet.advance_probs(M, lam, mu)                  # HOME = home side, AWAY = away side
+        if host == b:                                        # M is host-first -> flip back to (a,b)
+            pa, pb, adv_a, adv_b = pj, pi, adv["AWAY"], adv["HOME"]
+        else:
+            pa, pb, adv_a, adv_b = pi, pj, adv["HOME"], adv["AWAY"]
+        winner = a if adv_a >= adv_b else b
+        rows.append({"a": a, "b": b, "pa": pa, "pb": pb, "date": fx["date"],
+                     "winner": winner, "win_p": max(adv_a, adv_b)})
     return rows
 
 def update_and_grade(m, zmap, confmap, rem, gdf, groups):
@@ -715,7 +729,8 @@ if __name__ == "__main__":
     # Azteca (2240m). Build an altitude-adjusted advantage matrix + locate Mexico's group.
     # WC_NO_ALT_KO disables it (for the A/B accuracy check).
     A_azteca = None if os.environ.get("WC_NO_ALT_KO") else \
-        adv_matrix(m, teams, zmap, confmap, elo_predict, city="Mexico City")
+        adv_matrix(m, teams, zmap, confmap, elo_predict, city="Mexico City",
+                   home_nations=KO_HOME | {"Mexico"})       # Mexico's genuine home slot
     azteca_group = next((i for i, g in enumerate(groups) if "Mexico" in g), None) \
         if A_azteca is not None else None
 
