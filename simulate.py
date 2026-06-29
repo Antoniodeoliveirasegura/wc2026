@@ -519,6 +519,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .gkick{font-size:11.5px;color:#9fc5ff;font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
 .gadv{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink)}
 .note{background:#1a1f27;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
+.sitefoot{max-width:1060px;margin:0 auto;padding:20px;color:#6e7681;font-size:11px;line-height:1.7;border-top:1px solid var(--line)}.sitefoot b{color:#8b949e}
 @media(max-width:640px){
 .wrap{padding:20px 13px 56px}.nav .inner{padding:0 13px}
 h1{font-size:23px}.sub{font-size:13px}
@@ -535,6 +536,17 @@ NAV = [("index.html", "Overview"), ("table.html", "All teams"),
        ("scores.html", "Group scores"), ("knockout.html", "Knockout"), ("bets.html", "Bets")]
 
 
+DISCLAIMER = (
+    '<div class="sitefoot"><b>Disclaimer.</b> WC2026 is an independent statistical model published '
+    'for educational and informational purposes only. Nothing on this site is betting, financial, or '
+    'investment advice, no result is guaranteed, and modelled performance does not predict future '
+    'outcomes. We are not a bookmaker, do not accept or place wagers, and are not affiliated with any '
+    'sportsbook &mdash; odds are shown for comparison only and may be inaccurate or out of date. Any '
+    'decision you make is your own, and we accept no liability for any loss or damage arising from use '
+    'of this information. Betting carries financial risk; only stake what you can afford to lose. '
+    '18+ (21+ where required). If gambling is a problem, call 1-800-GAMBLER.</div>')
+
+
 def _page(active: str, title: str, body: str) -> str:
     links = ""
     for href, lbl in NAV:
@@ -544,7 +556,7 @@ def _page(active: str, title: str, body: str) -> str:
             f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>'
             f'{CSS}</head><body><div class="nav"><div class="inner">'
             f'<span class="brand">WC2026</span>{links}</div></div>'
-            f'<div class="wrap">{body}</div></body></html>')
+            f'<div class="wrap">{body}</div>{DISCLAIMER}</body></html>')
 
 
 def _hero(title: str, sub: str, phase: str) -> str:
