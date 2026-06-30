@@ -294,5 +294,13 @@
   },
   "adv": "Colombia",
   "locked": "2026-06-30"
+ },
+ "Canada|Morocco": {
+  "pred": {
+   "Canada": 0,
+   "Morocco": 1
+  },
+  "adv": "Morocco",
+  "locked": "2026-06-30"
  }
 }
