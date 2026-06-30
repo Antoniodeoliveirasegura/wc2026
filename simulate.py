@@ -538,6 +538,7 @@ transition:border-color .18s,transform .18s,box-shadow .18s}
 .bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
 .track{background:#0c121c;border:1px solid var(--line);border-radius:7px;height:24px;overflow:hidden}
 .fill{display:block;background:linear-gradient(90deg,#3a6fd0,var(--accent));height:100%;border-radius:6px;box-shadow:0 0 18px -4px rgba(91,155,255,.5);transition:width .5s cubic-bezier(.16,1,.3,1)}
+.bar:hover .track{border-color:var(--line2)}.bar:hover .nm{color:#fff}
 .bar.lead .fill{background:linear-gradient(90deg,var(--gold-dim),var(--gold));box-shadow:0 0 20px -3px rgba(245,196,81,.55)}
 .bar.lead .nm{font-weight:700}.bar.lead .rk{color:var(--gold)}
 .bar.lead .v{color:var(--gold)}.bar.podium .rk{color:var(--ink)}
@@ -585,7 +586,7 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .wrap{padding:22px 13px 56px}.nav .inner{padding:0 13px}
 h1{font-size:27px}.sub{font-size:13px}
 .card{padding:17px 14px;border-radius:14px}.card h2{font-size:12px}.game{padding:15px}
-.bar{grid-template-columns:20px 78px 1fr 44px;gap:9px;font-size:13px}.bar .nm img{margin-right:5px}
+.bar{grid-template-columns:20px 92px 1fr 44px;gap:8px;font-size:13px}.bar .nm img{margin-right:5px}
 table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
 th,td{padding:8px 5px;font-size:12.5px}.col-opt{display:none}
 .hcgrid,.games{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}.pred{font-size:12px}
@@ -643,7 +644,7 @@ def render_overview(teams, order, R, n_sims, phase) -> str:
     sub = ("Dixon-Coles + connectivity-weighted squad value, blended with pi-ratings, altitude-aware "
            f"&middot; {n_sims:,} Monte-Carlo runs")
     foot = ('<p class="foot">A calibrated distribution, not a single pick &mdash; the favourite '
-            'tops out ~16%. See <a href="table.html" style="color:#60a5fa">all teams</a>.</p>')
+            'tops out ~16%. See <a href="table.html" style="color:var(--accent2)">all teams</a>.</p>')
     return (_hero("2026 World Cup forecast", sub, phase)
             + f'<div class="card"><h2>Title odds <span class="hint">top 32</span></h2>'
             f'<div class="bars">{bars}</div>{foot}</div>')
