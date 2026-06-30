@@ -165,6 +165,47 @@ def fit_elo_wdl(df, home_adv=65.0, start=1500.0):
         return clf.predict_proba(np.array([[d]]))[0]
     return r, predict
 
+PI_LAM, PI_GAM = 0.10, 0.70   # pi-rating learning rate + home/away cross-update.
+                              # tuned leak-free on held-out windows (pi_test.py): swapping pi
+                              # for Elo as the second rating cuts competitive OOS RPS by ~0.004
+                              # on both 2022-06 and 2023-06 cutoffs (Elo was near dead weight).
+
+def fit_pi_wdl(df, lam=PI_LAM, gam=PI_GAM):
+    """Forward pi-rating pass (Constantinou-Fenton) + a multinomial-logistic map from
+    pre-match predicted goal-diff -> (H,D,A). Same interface as fit_elo_wdl: returns
+    (ratings, predict), predict(home, away, neutral) -> np.array([P_home, P_draw, P_away]).
+
+    Each team carries home(H) and away(A) ratings in goal-diff units; the blowout-damped
+    error 3*log10(1+|err|) nudges them. Leak-free: each match's predicted_gd uses only
+    prior results. Neutral games (most WC matches) use the mean of a team's two ratings
+    (no home benefit) and update both symmetrically."""
+    from sklearn.linear_model import LogisticRegression
+    H = {}; A = {}
+    pgd = np.zeros(len(df)); y = np.zeros(len(df), int)
+    for k, row in enumerate(df.itertuples(index=False)):
+        hh, aa = row.home_team, row.away_team
+        rhH, rhA = H.get(hh, 0.0), A.get(hh, 0.0)
+        raH, raA = H.get(aa, 0.0), A.get(aa, 0.0)
+        ph, pa = ((rhH + rhA) / 2.0, (raH + raA) / 2.0) if row.neutral else (rhH, raA)
+        pgd[k] = ph - pa
+        y[k] = _outcome(row.home_score, row.away_score)
+        err = (row.home_score - row.away_score) - pgd[k]
+        d = lam * 3.0 * np.log10(1.0 + abs(err)) * np.sign(err)
+        if row.neutral:
+            H[hh], A[hh] = rhH + d, rhA + d
+            H[aa], A[aa] = raH - d, raA - d
+        else:
+            H[hh], A[hh] = rhH + d, rhA + gam * d      # cross-update the other venue
+            A[aa], H[aa] = raA - d, raH - gam * d
+    clf = LogisticRegression(max_iter=3000).fit(pgd.reshape(-1, 1), y)
+    ratings = {t: (H.get(t, 0.0) + A.get(t, 0.0)) / 2.0 for t in set(H) | set(A)}
+    def predict(home, away, neutral=True):
+        rhH, rhA = H.get(home, 0.0), A.get(home, 0.0)
+        raH, raA = H.get(away, 0.0), A.get(away, 0.0)
+        g = ((rhH + rhA) / 2.0 - (raH + raA) / 2.0) if neutral else (rhH - raA)
+        return clf.predict_proba(np.array([[g]]))[0]
+    return ratings, predict
+
 def geo_blend(p_dc, p_elo, w=ELO_BLEND_W):
     """Geometric (log-opinion-pool) blend of two W/D/L vectors, renormalized."""
     g = np.clip(np.asarray(p_dc), 1e-12, 1) ** w * np.clip(np.asarray(p_elo), 1e-12, 1) ** (1 - w)

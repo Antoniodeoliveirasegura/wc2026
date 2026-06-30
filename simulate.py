@@ -103,15 +103,16 @@ def score_dist(m, zmap, confmap, a, b, city=""):
     cum = np.cumsum(M.flatten()); cum = cum / cum[-1]
     return cells, cum
 
-def adv_matrix(m, teams, zmap, confmap, elo_predict, city="", home_nations=KO_HOME):
+def adv_matrix(m, teams, zmap, confmap, rate_predict, city="", home_nations=KO_HOME):
     """P(a beats b) for every ordered pair, used by the knockout sims. W/D/L is the
-    DC+squad-value model geometrically blended with Elo (wc.geo_blend; validated
-    -0.0035 RPS). Host edge applies in non-neutral framings exactly as before.
+    DC+squad-value model geometrically blended with pi-ratings (wc.geo_blend; pi_test.py:
+    DC x pi beats the old DC x Elo by ~-0.004 RPS on two held-out cutoffs). Host edge
+    applies in non-neutral framings exactly as before.
     city != "" applies the venue altitude penalty (for the Azteca knockout slots)."""
     def blended(home, away, neutral):
         base = altmod.alt_adjust(mvmod.mv_adjust(m, zmap, confmap, home, away), home, away, city)
         dc = np.array(wc.wdl(base, home, away, neutral=neutral))
-        return wc.geo_blend(dc, elo_predict(home, away, neutral=neutral))   # [H,D,A]
+        return wc.geo_blend(dc, rate_predict(home, away, neutral=neutral))   # [H,D,A]
     n = len(teams); A = np.zeros((n, n))
     for a in range(n):
         for b in range(n):
@@ -574,7 +575,7 @@ def render_overview(teams, order, R, n_sims, phase) -> str:
         f'<div class="bar"><span class="nm">{flag(teams[i])}{teams[i]}</span>'
         f'<span class="track"><span class="fill" style="width:{champ[i]/mx*100:.0f}%"></span></span>'
         f'<span class="v">{_pc(champ, i, n_sims)}</span></div>' for i in order[:32])
-    sub = ("Dixon-Coles + connectivity-weighted squad value, blended with Elo, altitude-aware "
+    sub = ("Dixon-Coles + connectivity-weighted squad value, blended with pi-ratings, altitude-aware "
            f"&middot; {n_sims:,} Monte-Carlo runs")
     foot = ('<p class="foot">A calibrated distribution, not a single pick &mdash; the favourite '
             'tops out ~16%. See <a href="table.html" style="color:#60a5fa">all teams</a>.</p>')
@@ -664,11 +665,18 @@ def render_bets() -> str | None:
         adv_line = (f'<div class="gadv">To advance &middot; {short(g["home"])} '
                     f'<b>{adv["HOME"]*100:.0f}%</b> &middot; {short(g["away"])} '
                     f'<b>{adv["AWAY"]*100:.0f}%</b></div>') if adv else ""
+        fc = g.get("forecast")
+        fc_line = ""
+        if fc and fc.get("market"):
+            a = fc["anchored"]
+            fc_line = (f'<div class="gadv"><b>Forecast</b> (market-anchored, experimental) &middot; '
+                       f'{short(g["home"])} <b>{a[0]*100:.0f}%</b> &middot; draw '
+                       f'<b>{a[1]*100:.0f}%</b> &middot; {short(g["away"])} <b>{a[2]*100:.0f}%</b></div>')
         cards.append(
             f'<div class="card game"><div class="ghead">{flag(g["home"])}{short(g["home"])}'
             f'<span class="vs">v</span>{flag(g["away"])}{short(g["away"])}</div>'
             + (f'<div class="gkick">{kick}</div>' if kick else "")
-            + adv_line
+            + adv_line + fc_line
             + f'{"".join(rows)}'
             f'<div class="gfoot">{g.get("avoidsCount", 0)} other markets screened out</div></div>')
     note = ('<div class="note"><b>Edge</b> = model probability &minus; <b>Pinnacle&rsquo;s '
@@ -676,7 +684,9 @@ def render_bets() -> str | None:
             'odds shown are the best price across books. Top 5 de-correlated picks per game. '
             '<b>Totals &amp; BTTS markets show as leans only</b> &mdash; the model&rsquo;s goal totals '
             'aren&rsquo;t calibrated yet, so they aren&rsquo;t staked as bets. No historical odds = '
-            'not ROI-backtested. Informational, not betting advice.</div>')
+            'not ROI-backtested. The <b>market-anchored forecast</b> blends the model with '
+            'Pinnacle&rsquo;s de-vigged line (the sharpest probability estimate); it&rsquo;s '
+            'experimental and judged live by CLV. Informational, not betting advice.</div>')
     head = _hero("Value bets", "Model probabilities vs live sportsbook odds",
                  f'updated {d.get("generatedAt", "")}')
     cs = clv.summary()
@@ -733,15 +743,15 @@ if __name__ == "__main__":
     groups = groups_from(gdf)
     teams = sorted({t for g in groups for t in g})
     tidx = {t: i for i, t in enumerate(teams)}
-    _, elo_predict = wc.fit_elo_wdl(df)
-    A = adv_matrix(m, teams, zmap, confmap, elo_predict)
+    _, pi_predict = wc.fit_pi_wdl(df)
+    A = adv_matrix(m, teams, zmap, confmap, pi_predict)
     rem = remaining_group_games(groups, gdf)
 
     # Option B: the R32 (Match 79) and R16 (Match 92) for Mexico's group winner are at Estadio
     # Azteca (2240m). Build an altitude-adjusted advantage matrix + locate Mexico's group.
     # WC_NO_ALT_KO disables it (for the A/B accuracy check).
     A_azteca = None if os.environ.get("WC_NO_ALT_KO") else \
-        adv_matrix(m, teams, zmap, confmap, elo_predict, city="Mexico City",
+        adv_matrix(m, teams, zmap, confmap, pi_predict, city="Mexico City",
                    home_nations=KO_HOME | {"Mexico"})       # Mexico's genuine home slot
     azteca_group = next((i for i, g in enumerate(groups) if "Mexico" in g), None) \
         if A_azteca is not None else None

@@ -113,6 +113,26 @@ def game_lambdas(adj, home, away):
             float(np.exp(adj["attack"][j] - adj["defense"][i])))
 
 
+ANCHOR_W = 0.5      # geometric weight on the Pinnacle de-vigged line in the anchored forecast.
+
+def anchored_forecast(M, lam, mu, sharp_fair, w=ANCHOR_W):
+    """Second, experimental forecast: the model moneyline geometrically blended with
+    Pinnacle's de-vigged line (the sharpest market estimate of true probability). Published
+    alongside the pure-model forecast and judged live by CLV — research says the closing
+    line is near-unbeatable, so anchoring to it is calibration insurance, not edge.
+    Returns {model, market, anchored} as [H,D,A]; market/anchored fall back to model when
+    Pinnacle didn't price the 3-way."""
+    ml = bet.market_probs(M, lam, mu)["moneyline"]
+    pm = [ml["HOME"], ml["DRAW"], ml["AWAY"]]
+    keys = [("moneyline", "HOME"), ("moneyline", "DRAW"), ("moneyline", "AWAY")]
+    if not all(k in sharp_fair for k in keys):
+        return {"model": pm, "market": None, "anchored": pm}
+    pk = [sharp_fair[k] for k in keys]
+    g = [p ** (1 - w) * q ** w for p, q in zip(pm, pk)]
+    s = sum(g)
+    return {"model": pm, "market": pk, "anchored": [x / s for x in g]}
+
+
 if __name__ == "__main__":
     df = wc.load()
     m = sim.get_model(df)
@@ -132,7 +152,8 @@ if __name__ == "__main__":
         rec = bet.recommend(gid, candidates_for(home, away, M, lam, mu,
                                                 info["best"], info["sharp"]))
         rec.update(home=home, away=away, commence=info.get("commence"),
-                   advance=bet.advance_probs(M, lam, mu))   # knockout: who wins the tie (ET+pens)
+                   advance=bet.advance_probs(M, lam, mu),    # knockout: who wins the tie (ET+pens)
+                   forecast=anchored_forecast(M, lam, mu, devig_book(info["sharp"])))
         out.append(rec)
 
     out.sort(key=lambda r: (-len(r["recommendedBets"]),
