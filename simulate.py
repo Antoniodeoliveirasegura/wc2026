@@ -35,7 +35,9 @@ WC_START = pd.Timestamp("2026-06-11")
 PRE_WC_CACHE = os.path.join(os.path.dirname(__file__), "pre_wc_model.pkl")
 
 def get_model(df):
-    if os.path.exists(MODEL_CACHE):
+    # Refit when results.csv is newer than the cache, so the DC ratings always reflect the
+    # latest results (in-tournament updating: group games shift strength -> sharper knockouts).
+    if os.path.exists(MODEL_CACHE) and os.path.getmtime(MODEL_CACHE) >= os.path.getmtime(wc.DATA):
         return pickle.load(open(MODEL_CACHE, "rb"))
     m = wc.fit_dixon_coles(df, ref_date=df.date.max())
     pickle.dump(m, open(MODEL_CACHE, "wb"))
