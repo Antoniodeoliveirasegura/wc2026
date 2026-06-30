@@ -321,6 +321,48 @@ def predict_knockout(m, zmap, confmap, fixtures):
                      "winner": winner, "win_p": max(adv_a, adv_b)})
     return rows
 
+ROUND_SEQ = {1: "Round of 32", 2: "Round of 16", 3: "Quarter-finals",
+             4: "Semi-finals", 5: "Final"}
+
+def update_and_grade_knockout(m, zmap, confmap, df, wcdf):
+    """Knockout bracket BY ROUND, the group-scores treatment for ties: PLAYED ties show the
+    actual score + who advanced (penalty winner from shootouts.csv), graded against a
+    locked pre-match prediction; UPCOMING ties show the predicted score + backed advancer.
+    Predictions lock once (never overwritten), so grading is hindsight-free. Returns
+    [(round_label, rows)]."""
+    preds = json.load(open(PRED_FILE, encoding="utf-8")) if os.path.exists(PRED_FILE) else {}
+    today = datetime.date.today().isoformat()
+    _, kdf = split_games(wcdf)
+    shoot = load_shootouts()
+    up_rows = predict_knockout(m, zmap, confmap, upcoming_knockout(df))
+    for pr in up_rows:                                     # lock each upcoming tie once
+        k = pred_key(pr["a"], pr["b"])
+        if k not in preds:
+            preds[k] = {"pred": {pr["a"]: pr["pa"], pr["b"]: pr["pb"]},
+                        "adv": pr["winner"], "locked": today}
+    with open(PRED_FILE, "w", encoding="utf-8") as f:
+        json.dump(preds, f, ensure_ascii=False, indent=1)
+
+    cnt = collections.Counter(); by_round = collections.defaultdict(list)
+    for r in kdf.sort_values("date").itertuples(index=False):     # played ties, chronological
+        h, a, hs, as_ = r.home_team, r.away_team, int(r.home_score), int(r.away_score)
+        ri = max(cnt[h], cnt[a]) + 1; cnt[h] += 1; cnt[a] += 1     # per-team KO ordinal -> round
+        key = (str(pd.Timestamp(r.date).date()), frozenset((h, a)))
+        winner = h if hs > as_ else a if as_ > hs else shoot.get(key, h)
+        row = {"a": h, "b": a, "act_a": hs, "act_b": as_, "winner": winner, "pens": hs == as_}
+        p = preds.get(pred_key(h, a))
+        if p and "adv" in p:                                       # graded vs the locked call
+            exact = p["pred"].get(h) == hs and p["pred"].get(a) == as_
+            row["status"] = "correct" if exact else "adv_ok" if p["adv"] == winner else "wrong"
+        else:
+            row["status"] = "result"                              # no pre-match lock -> ungraded
+        by_round[ri].append(row)
+    for pr in up_rows:                                            # upcoming ties after
+        ri = max(cnt[pr["a"]], cnt[pr["b"]]) + 1; cnt[pr["a"]] += 1; cnt[pr["b"]] += 1
+        by_round[ri].append({"a": pr["a"], "b": pr["b"], "pa": pr["pa"], "pb": pr["pb"],
+                             "winner": pr["winner"], "win_p": pr["win_p"], "status": "upcoming"})
+    return [(ROUND_SEQ.get(ri, f"Round {ri}"), by_round[ri]) for ri in sorted(by_round)]
+
 def update_and_grade(m, zmap, confmap, rem, gdf, groups):
     """Lock a predicted score for each UPCOMING game (never overwritten -> only ever
     before kickoff). Organise every group game BY GROUP: played games show the result
@@ -466,70 +508,86 @@ def render_hindcast(data):
     return f'<div class="hcsum">{summ}</div><div class="hcgrid">' + "".join(cards) + "</div>"
 
 CSS = """<style>
-:root{--bg:#0e1116;--card:#161b22;--ink:#e6edf3;--muted:#8b949e;--accent:#3b82f6;--line:#21262d}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
-font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-.nav{position:sticky;top:0;z-index:9;background:rgba(14,17,22,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+:root{--bg:#0a0d13;--card:#141a24;--card2:#171e29;--ink:#eef2f7;--muted:#8a94a6;
+--accent:#5b9bff;--accent2:#7cc4ff;--gold:#f5c451;--gold-dim:#caa23a;--line:#232c3a;--line2:#2c3646}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+background:var(--bg);background-image:radial-gradient(900px 420px at 72% -8%,rgba(91,155,255,.10),transparent 60%),radial-gradient(700px 360px at 8% 4%,rgba(245,196,81,.05),transparent 55%);background-attachment:fixed}
+.dsp{font-family:'Space Grotesk',-apple-system,Segoe UI,Roboto,sans-serif}
+.nav{position:sticky;top:0;z-index:9;background:rgba(10,13,19,.82);backdrop-filter:blur(12px) saturate(1.3);border-bottom:1px solid var(--line)}
 .nav .inner{max-width:1060px;margin:0 auto;padding:0 20px;display:flex;gap:2px;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.nav .brand{font-weight:700;margin-right:12px;white-space:nowrap;letter-spacing:-.01em}
-.nav a{padding:14px 13px;color:var(--muted);text-decoration:none;font-size:14px;font-weight:600;
-white-space:nowrap;border-bottom:2px solid transparent}
+.nav .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;margin-right:14px;white-space:nowrap;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}
+.nav .brand::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold)}
+.nav a{padding:15px 13px;color:var(--muted);text-decoration:none;font-size:14px;font-weight:600;
+white-space:nowrap;border-bottom:2px solid transparent;transition:color .15s}
 .nav a.active{color:var(--ink);border-bottom-color:var(--accent)}.nav a:hover{color:var(--ink)}
-.wrap{max-width:1060px;margin:0 auto;padding:28px 20px 72px}
-h1{font-size:30px;margin:0 0 4px;letter-spacing:-.02em}.sub{color:var(--muted);margin:0 0 6px;font-size:14px}
-.phase{display:inline-block;background:#1f2937;color:#9fc5ff;font-size:12px;font-weight:600;
-padding:4px 11px;border-radius:999px;margin:0 0 24px}
-h2{font-size:15px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 14px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:22px;transition:border-color .15s}
-.bars{display:flex;flex-direction:column;gap:9px}
-.bar{display:grid;grid-template-columns:118px 1fr 50px;align-items:center;gap:12px;font-size:14px}
-.bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.track{background:#21262d;border-radius:6px;height:22px;overflow:hidden}
-.fill{display:block;background:linear-gradient(90deg,#2563eb,#60a5fa);height:100%;border-radius:6px}
-.nm img,td img,.mt img,.ghead img{border-radius:2px;vertical-align:-2px;margin-right:7px;box-shadow:0 0 0 .5px rgba(255,255,255,.12)}
-tbody tr{transition:background .12s}tbody tr:hover{background:rgba(255,255,255,.04)}
-.v{text-align:right;font-variant-numeric:tabular-nums}
+.wrap{max-width:1060px;margin:0 auto;padding:34px 20px 72px}
+h1{font-family:'Space Grotesk',sans-serif;font-size:37px;font-weight:700;margin:0 0 6px;letter-spacing:-.025em;line-height:1.05}
+.sub{color:var(--muted);margin:0 0 8px;font-size:14.5px;max-width:62ch}
+.phase{display:inline-flex;align-items:center;gap:7px;background:rgba(91,155,255,.10);color:var(--accent2);
+font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;margin:2px 0 26px;border:1px solid rgba(91,155,255,.22)}
+.phase::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+h2{font-size:13px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.card{background:linear-gradient(165deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:16px;
+padding:24px;margin-bottom:22px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 14px 34px -22px rgba(0,0,0,.8);
+transition:border-color .18s,transform .18s,box-shadow .18s}
+.card:hover{border-color:var(--line2);transform:translateY(-2px);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 22px 46px -24px rgba(0,0,0,.9)}
+.bars{display:flex;flex-direction:column;gap:8px}
+.bar{display:grid;grid-template-columns:26px 116px 1fr 52px;align-items:center;gap:12px;font-size:14px;padding:3px 0}
+.bar .rk{font-family:'Space Grotesk',sans-serif;font-size:12.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+.bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.track{background:#0c121c;border:1px solid var(--line);border-radius:7px;height:24px;overflow:hidden}
+.fill{display:block;background:linear-gradient(90deg,#3a6fd0,var(--accent));height:100%;border-radius:6px;box-shadow:0 0 18px -4px rgba(91,155,255,.5);transition:width .5s cubic-bezier(.16,1,.3,1)}
+.bar.lead .fill{background:linear-gradient(90deg,var(--gold-dim),var(--gold));box-shadow:0 0 20px -3px rgba(245,196,81,.55)}
+.bar.lead .nm{font-weight:700}.bar.lead .rk{color:var(--gold)}
+.bar.lead .v{color:var(--gold)}.bar.podium .rk{color:var(--ink)}
+.v{text-align:right;font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}
+.nm img,td img,.mt img,.ghead img{border-radius:2px;vertical-align:-2px;margin-right:7px;box-shadow:0 0 0 .5px rgba(255,255,255,.14)}
+tbody tr{transition:background .12s}tbody tr:hover{background:rgba(91,155,255,.06)}
 table{width:100%;border-collapse:collapse;font-size:14px}.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
-th,td{text-align:right;padding:8px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
-th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:600}
-tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:8px}
+th,td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+td:not(:first-child){font-family:'Space Grotesk',sans-serif}
+th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:12px}
 .hint{font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
-.preds{display:flex;flex-direction:column;gap:6px}
-.pred{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:8px;flex-wrap:wrap}
-.pred.dim{opacity:.55}.pred .sc{font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
-.grp{font-size:11px;font-weight:600;color:#60a5fa;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 4px;padding-top:10px;border-top:1px solid var(--line)}
+.preds{display:flex;flex-direction:column;gap:5px}
+.pred{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:8px;flex-wrap:wrap;padding:4px 8px;border-radius:7px}
+.pred:nth-child(even){background:rgba(255,255,255,.018)}
+.pred.dim{opacity:.5}.pred .sc{font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
+.grp{font-size:11px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;padding-top:12px;border-top:1px solid var(--line)}
 .grp.first{border-top:none;padding-top:0;margin-top:2px}
-.badge{font-size:11.5px;padding:3px 8px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.b-pend{background:#21262d;color:#8b949e}.b-ok{background:#10331f;color:#3fb950}.b-no{background:#3a1d1d;color:#f85149}.b-done{background:#1c2128;color:#6e7681}.b-amber{background:#3a2e14;color:#e3b341}
+.badge{font-size:11.5px;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
+.b-pend{background:#1a212c;color:#8a94a6}.b-ok{background:rgba(63,185,80,.14);color:#56d364}.b-no{background:rgba(248,81,73,.13);color:#f85149}.b-done{background:#1a212c;color:#6e7681}.b-amber{background:rgba(245,196,81,.14);color:var(--gold)}
 .hcsum{font-size:13px;color:var(--muted);margin-bottom:14px}
 .hcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:8px}
-.hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0e1116;border:1px solid var(--line);border-radius:8px;padding:7px 11px}
-.hc .sc{font-weight:600;margin:0 3px}
-.hc .lean{color:var(--muted);font-size:11px;margin-left:5px;white-space:nowrap}.hc .lean-ok{color:#3fb950}.hc .lean-no{color:#f85149}
+.hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0c121c;border:1px solid var(--line);border-radius:9px;padding:8px 11px;transition:border-color .15s}
+.hc:hover{border-color:var(--line2)}.hc .sc{font-family:'Space Grotesk',sans-serif;font-weight:600;margin:0 3px}
+.hc .lean{color:var(--muted);font-size:11px;margin-left:5px;white-space:nowrap}.hc .lean-ok{color:#56d364}.hc .lean-no{color:#f85149}
 .games{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
-.game{padding:16px 18px;margin:0}
-.ghead{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
-.ghead .vs{color:var(--muted);font-weight:400;margin:0 4px}
-.bet{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.game{padding:18px 20px;margin:0}
+.ghead{font-family:'Space Grotesk',sans-serif;font-size:15.5px;font-weight:600;margin-bottom:13px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.ghead .vs{color:var(--muted);font-weight:400;margin:0 5px}
+.bet{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
 .bet:first-of-type{border-top:none}
 .bsel{display:flex;align-items:center;gap:8px;font-size:13.5px;min-width:0}
 .bmeta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
-.edge{color:var(--ink);font-variant-numeric:tabular-nums}.edge.pos{color:#3fb950}
+.edge{color:var(--ink);font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}.edge.pos{color:#56d364}
 .vb{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:5px;white-space:nowrap}
-.vb.bet{background:#10331f;color:#3fb950}.vb.lean{background:#3a2e14;color:#e3b341}.vb.avoid{background:#1c2128;color:#6e7681}
-.vb.mkt{background:#102a3a;color:#60a5fa}
-.gfoot{color:var(--muted);font-size:11.5px;margin-top:10px}
-.gkick{font-size:11.5px;color:#9fc5ff;font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
-.gadv{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink)}
-.note{background:#1a1f27;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
-.sitefoot{max-width:1060px;margin:0 auto;padding:20px;color:#6e7681;font-size:11px;line-height:1.7;border-top:1px solid var(--line)}.sitefoot b{color:#8b949e}
+.vb.bet{background:rgba(63,185,80,.15);color:#56d364}.vb.lean{background:rgba(245,196,81,.15);color:var(--gold)}.vb.avoid{background:#1a212c;color:#6e7681}
+.vb.mkt{background:rgba(91,155,255,.15);color:var(--accent2)}
+.gfoot{color:var(--muted);font-size:11.5px;margin-top:12px}
+.gkick{font-size:11.5px;color:var(--accent2);font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
+.gadv{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink);font-family:'Space Grotesk',sans-serif}
+.note{background:linear-gradient(165deg,#141a24,#12171f);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:13px 15px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
+.note b{color:var(--ink)}
+.sitefoot{max-width:1060px;margin:0 auto;padding:22px 20px;color:#6e7681;font-size:11px;line-height:1.7;border-top:1px solid var(--line)}.sitefoot b{color:#8a94a6}
 @media(max-width:640px){
-.wrap{padding:20px 13px 56px}.nav .inner{padding:0 13px}
-h1{font-size:23px}.sub{font-size:13px}
-.card{padding:16px 13px}.card h2{font-size:13px}.game{padding:14px}
-.bar{grid-template-columns:90px 1fr 40px;gap:8px;font-size:13px}.bar .nm img{margin-right:5px}
+.wrap{padding:22px 13px 56px}.nav .inner{padding:0 13px}
+h1{font-size:27px}.sub{font-size:13px}
+.card{padding:17px 14px;border-radius:14px}.card h2{font-size:12px}.game{padding:15px}
+.bar{grid-template-columns:20px 78px 1fr 44px;gap:9px;font-size:13px}.bar .nm img{margin-right:5px}
 table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
-th,td{padding:7px 4px;font-size:12.5px}.col-opt{display:none}
+th,td{padding:8px 5px;font-size:12.5px}.col-opt{display:none}
 .hcgrid,.games{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}.pred{font-size:12px}
 .bmeta{font-size:11px;gap:6px}
 }
@@ -557,6 +615,9 @@ def _page(active: str, title: str, body: str) -> str:
         links += f'<a href="{href}"{cls}>{lbl}</a>'
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>'
+            f'<link rel="preconnect" href="https://fonts.googleapis.com">'
+            f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+            f'<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">'
             f'{CSS}</head><body><div class="nav"><div class="inner">'
             f'<span class="brand">WC2026</span>{links}</div></div>'
             f'<div class="wrap">{body}</div>{DISCLAIMER}</body></html>')
@@ -574,9 +635,11 @@ def _pc(c, i, n):
 def render_overview(teams, order, R, n_sims, phase) -> str:
     champ = R["champ"]; mx = max(1, champ[order[0]])
     bars = "".join(
-        f'<div class="bar"><span class="nm">{flag(teams[i])}{teams[i]}</span>'
-        f'<span class="track"><span class="fill" style="width:{champ[i]/mx*100:.0f}%"></span></span>'
-        f'<span class="v">{_pc(champ, i, n_sims)}</span></div>' for i in order[:32])
+        f'<div class="bar{" lead" if rank==1 else " podium" if rank<=3 else ""}">'
+        f'<span class="rk">{rank}</span><span class="nm">{flag(teams[i])}{teams[i]}</span>'
+        f'<span class="track"><span class="fill" style="width:{max(2,champ[i]/mx*100):.0f}%"></span></span>'
+        f'<span class="v">{_pc(champ, i, n_sims)}</span></div>'
+        for rank, i in enumerate(order[:32], 1))
     sub = ("Dixon-Coles + connectivity-weighted squad value, blended with pi-ratings, altitude-aware "
            f"&middot; {n_sims:,} Monte-Carlo runs")
     foot = ('<p class="foot">A calibrated distribution, not a single pick &mdash; the favourite '
@@ -606,29 +669,43 @@ def render_scores(preds, hc, phase) -> str:
             f'played games &middot; no hindsight</span></h2>{render_hindcast(hc["group"])}</div>')
 
 
-def render_knockout_preds(rows):
-    if not rows:
+def render_knockout_results(grouped):
+    if not grouped:
         return ("<p style='color:var(--muted);font-size:13px;margin:0'>Knockout ties appear "
                 "here once the bracket is set.</p>")
-    title = ROUND_BY_COUNT.get(len(rows), "Knockout ties")
-    out = [f'<div class="grp first">{title}</div>']
-    for r in rows:
-        match = (f'<span class="mt">{flag(r["a"])}{short(r["a"])}</span> '
-                 f'<span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
-                 f'<span class="mt">{flag(r["b"])}{short(r["b"])}</span>')
-        adv = (f'<span class="badge b-amber">&rarr; {short(r["winner"])} '
-               f'{r["win_p"]*100:.0f}%</span>')
-        out.append(f'<div class="pred"><span>{match}</span>{adv}</div>')
+    out = []
+    for gi, (label, rows) in enumerate(grouped):
+        out.append(f'<div class="grp{" first" if gi == 0 else ""}">{label}</div>')
+        for r in rows:
+            if r["status"] == "upcoming":                       # predicted score + backed advancer
+                score = f'{r["pa"]}&ndash;{r["pb"]}'
+                adv = (f'<span class="lean">&rarr; {short(r["winner"])} '
+                       f'{r["win_p"]*100:.0f}%</span>')
+                badge = '<span class="badge b-pend">upcoming</span>'
+            else:                                               # played: actual score + who advanced
+                score = f'<b>{r["act_a"]}&ndash;{r["act_b"]}</b>'
+                pens = ' <span class="lean">(pens)</span>' if r["pens"] else ''
+                adv = (f'<span class="lean lean-ok">&rarr; {short(r["winner"])} '
+                       f'advances{pens}</span>')
+                badge = {"correct": '<span class="badge b-ok">&#10003; exact</span>',
+                         "adv_ok": '<span class="badge b-amber">called it</span>',
+                         "wrong": '<span class="badge b-no">missed</span>',
+                         "result": '<span class="badge b-done">played</span>'}[r["status"]]
+            match = (f'<span class="mt">{flag(r["a"])}{short(r["a"])}</span> '
+                     f'<span class="sc">{score}</span> '
+                     f'<span class="mt">{flag(r["b"])}{short(r["b"])}</span>{adv}')
+            out.append(f'<div class="pred"><span>{match}</span>{badge}</div>')
     return '<div class="preds">' + "".join(out) + "</div>"
 
 
-def render_knockout(ko_preds, hc, phase) -> str:
+def render_knockout(ko_grouped, hc, phase) -> str:
     ko = hc["knockout"]
     ko_hint = ("someone advances &middot; penalty shootouts resolved" if ko[3]
                else "fills in as ties are played")
-    return (_hero("Knockout scores", "Predicted ties and knockout backtest", phase)
-            + '<div class="card"><h2>Tie predictions <span class="hint">most-likely 90&prime; score '
-            f'&middot; who advances</span></h2>{render_knockout_preds(ko_preds)}</div>'
+    return (_hero("Knockout scores", "Results and who advanced, with predictions for upcoming ties", phase)
+            + '<div class="card"><h2>Knockout bracket <span class="hint">played = actual score '
+            f'&amp; who advanced &middot; upcoming = prediction</span></h2>'
+            f'{render_knockout_results(ko_grouped)}</div>'
             + f'<div class="card"><h2>Knockout hindcast <span class="hint">{ko_hint}</span></h2>'
             f'{render_hindcast(ko)}</div>')
 
@@ -714,13 +791,13 @@ def _bets_placeholder() -> str:
             'Run <code>python recommend_bets.py</code> (needs ODDS_API_KEY) to populate this page.</p></div>')
 
 
-def write_site(teams, order, R, n_sims, phase, preds, hc, ko_preds, docsdir):
+def write_site(teams, order, R, n_sims, phase, preds, hc, ko_grouped, docsdir):
     os.makedirs(docsdir, exist_ok=True)
     pages = {
         "index.html": ("2026 World Cup Forecast", render_overview(teams, order, R, n_sims, phase)),
         "table.html": ("All teams - WC2026", render_table(teams, order, R, n_sims, phase)),
         "scores.html": ("Group scores - WC2026", render_scores(preds, hc, phase)),
-        "knockout.html": ("Knockout scores - WC2026", render_knockout(ko_preds, hc, phase)),
+        "knockout.html": ("Knockout scores - WC2026", render_knockout(ko_grouped, hc, phase)),
     }
     for fname, (title, body) in pages.items():
         with open(os.path.join(docsdir, fname), "w", encoding="utf-8") as f:
@@ -806,8 +883,8 @@ if __name__ == "__main__":
         fh.write("\n".join(lines) + "\n")
     preds = update_and_grade(m, zmap, confmap, rem, gdf, groups)
     hc = hindcast(df, wcdf)
-    ko_preds = predict_knockout(m, zmap, confmap, upcoming_knockout(df))
-    write_site(teams, order, R, N_SIMS, phase, preds, hc, ko_preds,
+    ko_grouped = update_and_grade_knockout(m, zmap, confmap, df, wcdf)
+    write_site(teams, order, R, N_SIMS, phase, preds, hc, ko_grouped,
                os.path.join(os.path.dirname(__file__), "docs"))
 
     assert abs(sum(R["champ"].values()) - N_SIMS) < 1

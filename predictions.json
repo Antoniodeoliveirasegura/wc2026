@@ -166,5 +166,133 @@
    "Panama": 0
   },
   "locked": "2026-06-25"
+ },
+ "Canada|South Africa": {
+  "pred": {
+   "South Africa": 0,
+   "Canada": 1
+  },
+  "adv": "Canada",
+  "locked": "2026-06-30"
+ },
+ "Brazil|Japan": {
+  "pred": {
+   "Brazil": 1,
+   "Japan": 0
+  },
+  "adv": "Brazil",
+  "locked": "2026-06-30"
+ },
+ "Germany|Paraguay": {
+  "pred": {
+   "Germany": 2,
+   "Paraguay": 0
+  },
+  "adv": "Germany",
+  "locked": "2026-06-30"
+ },
+ "Morocco|Netherlands": {
+  "pred": {
+   "Netherlands": 1,
+   "Morocco": 1
+  },
+  "adv": "Netherlands",
+  "locked": "2026-06-30"
+ },
+ "Ivory Coast|Norway": {
+  "pred": {
+   "Ivory Coast": 1,
+   "Norway": 1
+  },
+  "adv": "Norway",
+  "locked": "2026-06-30"
+ },
+ "France|Sweden": {
+  "pred": {
+   "France": 2,
+   "Sweden": 0
+  },
+  "adv": "France",
+  "locked": "2026-06-30"
+ },
+ "Ecuador|Mexico": {
+  "pred": {
+   "Mexico": 0,
+   "Ecuador": 0
+  },
+  "adv": "Ecuador",
+  "locked": "2026-06-30"
+ },
+ "DR Congo|England": {
+  "pred": {
+   "England": 1,
+   "DR Congo": 0
+  },
+  "adv": "England",
+  "locked": "2026-06-30"
+ },
+ "Belgium|Senegal": {
+  "pred": {
+   "Belgium": 1,
+   "Senegal": 0
+  },
+  "adv": "Belgium",
+  "locked": "2026-06-30"
+ },
+ "Bosnia and Herzegovina|United States": {
+  "pred": {
+   "United States": 2,
+   "Bosnia and Herzegovina": 0
+  },
+  "adv": "United States",
+  "locked": "2026-06-30"
+ },
+ "Austria|Spain": {
+  "pred": {
+   "Spain": 2,
+   "Austria": 0
+  },
+  "adv": "Spain",
+  "locked": "2026-06-30"
+ },
+ "Croatia|Portugal": {
+  "pred": {
+   "Portugal": 1,
+   "Croatia": 0
+  },
+  "adv": "Portugal",
+  "locked": "2026-06-30"
+ },
+ "Algeria|Switzerland": {
+  "pred": {
+   "Switzerland": 1,
+   "Algeria": 1
+  },
+  "adv": "Switzerland",
+  "locked": "2026-06-30"
+ },
+ "Australia|Egypt": {
+  "pred": {
+   "Australia": 0,
+   "Egypt": 0
+  },
+  "adv": "Australia",
+  "locked": "2026-06-30"
+ },
+ "Argentina|Cape Verde": {
+  "pred": {
+   "Argentina": 2,
+   "Cape Verde": 0
+  },
+  "adv": "Argentina",
+  "locked": "2026-06-30"
+ },
+ "Colombia|Ghana": {
+  "pred": {
+   "Colombia": 1,
+   "Ghana": 0
+  },
+  "adv": "Colombia",
+  "locked": "2026-06-30"
  }
 }
