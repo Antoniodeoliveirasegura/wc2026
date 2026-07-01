@@ -302,5 +302,21 @@
   },
   "adv": "Morocco",
   "locked": "2026-06-30"
+ },
+ "France|Paraguay": {
+  "pred": {
+   "Paraguay": 0,
+   "France": 1
+  },
+  "adv": "France",
+  "locked": "2026-07-01"
+ },
+ "Brazil|Norway": {
+  "pred": {
+   "Brazil": 2,
+   "Norway": 0
+  },
+  "adv": "Brazil",
+  "locked": "2026-07-01"
  }
 }
