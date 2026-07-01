@@ -410,7 +410,7 @@ def render_preds(grouped):
         out.append(f'<div class="grp{" first" if gi == 0 else ""}">{label}</div>')
         for r in rows:
             match = (f'<span class="mt">{flag(r["a"])}{short(r["a"])}</span> '
-                     f'<span class="sc">{r["pa"]}&ndash;{r["pb"]}</span> '
+                     f'<span class="sc">{r["pa"]}-{r["pb"]}</span> '
                      f'<span class="mt">{flag(r["b"])}{short(r["b"])}</span>')
             st = r["status"]
             if st == "upcoming":
@@ -420,7 +420,7 @@ def render_preds(grouped):
             elif st == "correct":
                 badge, cls = '<span class="badge b-ok">&#10003;</span>', "pred"
             else:
-                badge, cls = f'<span class="badge b-no">{r["act_a"]}&ndash;{r["act_b"]}</span>', "pred"
+                badge, cls = f'<span class="badge b-no">{r["act_a"]}-{r["act_b"]}</span>', "pred"
             out.append(f'<div class="{cls}"><span>{match}</span>{badge}</div>')
     return '<div class="preds">' + "".join(out) + "</div>"
 
@@ -485,7 +485,7 @@ def render_hindcast(data):
     cards = []
     for r in rows:
         match = (f'{flag(r["home"])}{short(r["home"])} '
-                 f'<b class="sc">{r["ph"]}&ndash;{r["pa"]}</b> '
+                 f'<b class="sc">{r["ph"]}-{r["pa"]}</b> '
                  f'{flag(r["away"])}{short(r["away"])}')
         # when the predicted scoreline is a draw, show who it'd back if forced to call a winner
         if r["ph"] == r["pa"]:
@@ -497,9 +497,9 @@ def render_hindcast(data):
         if r["exact"]:
             badge = '<span class="badge b-ok">&#10003; exact</span>'
         elif r["ok"]:
-            badge = f'<span class="badge b-amber">{r["ah"]}&ndash;{r["aa"]}</span>'
+            badge = f'<span class="badge b-amber">{r["ah"]}-{r["aa"]}</span>'
         else:
-            badge = f'<span class="badge b-no">{r["ah"]}&ndash;{r["aa"]}</span>'
+            badge = f'<span class="badge b-no">{r["ah"]}-{r["aa"]}</span>'
         cards.append(f'<div class="hc"><span>{match}</span>{badge}</div>')
     summ = f'{exact}/{n} exact scores &middot; {ok}/{n} outcomes right ({ok / n:.0%})'
     if dec_n:
@@ -508,87 +508,89 @@ def render_hindcast(data):
     return f'<div class="hcsum">{summ}</div><div class="hcgrid">' + "".join(cards) + "</div>"
 
 CSS = """<style>
-:root{--bg:#0a0d13;--card:#141a24;--card2:#171e29;--ink:#eef2f7;--muted:#8a94a6;
---accent:#5b9bff;--accent2:#7cc4ff;--gold:#f5c451;--gold-dim:#caa23a;--line:#232c3a;--line2:#2c3646}
+/* Editorial-dark forecast almanac. ONE accent (amber = trophy) over warm-graphite
+   neutrals; green/red reserved for semantic right/wrong. Radius lock: cards 14px,
+   controls 8px, pills full. */
+:root{--bg:#0b0c10;--card:#13161c;--ink:#eceae4;--ink2:#c9c6bd;--muted:#8f8b82;
+--accent:#f0b23e;--accent-dim:#c8912e;--pos:#61c07d;--neg:#e0736b;
+--line:#22262d;--line2:#2e333b;--r-card:14px;--r-ctl:8px}
 *{box-sizing:border-box}
-body{margin:0;color:var(--ink);font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
-background:var(--bg);background-image:radial-gradient(900px 420px at 72% -8%,rgba(91,155,255,.10),transparent 60%),radial-gradient(700px 360px at 8% 4%,rgba(245,196,81,.05),transparent 55%);background-attachment:fixed}
+body{margin:0;color:var(--ink);font:16px/1.65 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+background:var(--bg);background-image:radial-gradient(680px 320px at 50% -12%,rgba(240,178,62,.05),transparent 62%);background-attachment:fixed}
 .dsp{font-family:'Space Grotesk',-apple-system,Segoe UI,Roboto,sans-serif}
-.nav{position:sticky;top:0;z-index:9;background:rgba(10,13,19,.82);backdrop-filter:blur(12px) saturate(1.3);border-bottom:1px solid var(--line)}
-.nav .inner{max-width:1060px;margin:0 auto;padding:0 20px;display:flex;gap:2px;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch}
-.nav .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;margin-right:14px;white-space:nowrap;letter-spacing:-.02em;display:inline-flex;align-items:center;gap:7px}
-.nav .brand::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--gold);box-shadow:0 0 10px var(--gold)}
-.nav a{padding:15px 13px;color:var(--muted);text-decoration:none;font-size:14px;font-weight:600;
-white-space:nowrap;border-bottom:2px solid transparent;transition:color .15s}
+.nav{position:sticky;top:0;z-index:9;background:rgba(11,12,16,.86);backdrop-filter:blur(12px) saturate(1.2);border-bottom:1px solid var(--line)}
+.nav .inner{max-width:1040px;margin:0 auto;padding:0 22px;display:flex;gap:2px;align-items:center;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.nav .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;margin-right:18px;white-space:nowrap;letter-spacing:-.01em;color:var(--ink)}
+.nav .brand b{color:var(--accent);font-weight:700}
+.nav a{padding:16px 13px;color:var(--muted);text-decoration:none;font-size:13.5px;font-weight:600;
+white-space:nowrap;border-bottom:2px solid transparent;transition:color .15s,border-color .15s}
 .nav a.active{color:var(--ink);border-bottom-color:var(--accent)}.nav a:hover{color:var(--ink)}
-.wrap{max-width:1060px;margin:0 auto;padding:34px 20px 72px}
-h1{font-family:'Space Grotesk',sans-serif;font-size:37px;font-weight:700;margin:0 0 6px;letter-spacing:-.025em;line-height:1.05}
-.sub{color:var(--muted);margin:0 0 8px;font-size:14.5px;max-width:62ch}
-.phase{display:inline-flex;align-items:center;gap:7px;background:rgba(91,155,255,.10);color:var(--accent2);
-font-size:12px;font-weight:600;padding:5px 12px;border-radius:999px;margin:2px 0 26px;border:1px solid rgba(91,155,255,.22)}
-.phase::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
-h2{font-size:13px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin:0 0 16px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-.card{background:linear-gradient(165deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:16px;
-padding:24px;margin-bottom:22px;box-shadow:0 1px 0 rgba(255,255,255,.03) inset,0 14px 34px -22px rgba(0,0,0,.8);
-transition:border-color .18s,transform .18s,box-shadow .18s}
-.card:hover{border-color:var(--line2);transform:translateY(-2px);box-shadow:0 1px 0 rgba(255,255,255,.04) inset,0 22px 46px -24px rgba(0,0,0,.9)}
-.bars{display:flex;flex-direction:column;gap:8px}
-.bar{display:grid;grid-template-columns:26px 116px 1fr 52px;align-items:center;gap:12px;font-size:14px;padding:3px 0}
+.wrap{max-width:1040px;margin:0 auto;padding:40px 22px 80px}
+h1{font-family:'Space Grotesk',sans-serif;font-size:40px;font-weight:700;margin:0 0 10px;letter-spacing:-.03em;line-height:1.02}
+.sub{color:var(--muted);margin:0 0 14px;font-size:15px;max-width:64ch;line-height:1.55}
+.phase{display:inline-flex;align-items:center;background:rgba(240,178,62,.10);color:var(--accent);
+font-size:12px;font-weight:600;padding:6px 13px;border-radius:999px;margin:2px 0 34px;border:1px solid rgba(240,178,62,.22);letter-spacing:.01em}
+h2{font-family:'Space Grotesk',sans-serif;font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.09em;margin:0 0 18px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-card);
+padding:26px;margin-bottom:24px;transition:border-color .18s}
+.card:hover{border-color:var(--line2)}
+.bars{display:flex;flex-direction:column;gap:9px}
+.bar{display:grid;grid-template-columns:24px 120px 1fr 52px;align-items:center;gap:13px;font-size:14px;padding:3px 0}
 .bar .rk{font-family:'Space Grotesk',sans-serif;font-size:12.5px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
-.bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
-.track{background:#0c121c;border:1px solid var(--line);border-radius:7px;height:24px;overflow:hidden}
-.fill{display:block;background:linear-gradient(90deg,#3a6fd0,var(--accent));height:100%;border-radius:6px;box-shadow:0 0 18px -4px rgba(91,155,255,.5);transition:width .5s cubic-bezier(.16,1,.3,1)}
-.bar:hover .track{border-color:var(--line2)}.bar:hover .nm{color:#fff}
-.bar.lead .fill{background:linear-gradient(90deg,var(--gold-dim),var(--gold));box-shadow:0 0 20px -3px rgba(245,196,81,.55)}
-.bar.lead .nm{font-weight:700}.bar.lead .rk{color:var(--gold)}
-.bar.lead .v{color:var(--gold)}.bar.podium .rk{color:var(--ink)}
+.bar .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;color:var(--ink2)}
+.track{background:#0c0e12;border:1px solid var(--line);border-radius:var(--r-ctl);height:24px;overflow:hidden}
+.fill{display:block;background:linear-gradient(90deg,#3c414a,#565c66);height:100%;border-radius:var(--r-ctl);transition:width .5s cubic-bezier(.16,1,.3,1)}
+.bar:hover .track{border-color:var(--line2)}.bar:hover .nm{color:var(--ink)}
+.bar.lead .fill{background:linear-gradient(90deg,var(--accent-dim),var(--accent))}
+.bar.lead .nm{font-weight:700;color:var(--ink)}.bar.lead .rk{color:var(--accent)}
+.bar.lead .v{color:var(--accent)}.bar.podium .rk{color:var(--ink2)}
 .v{text-align:right;font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}
-.nm img,td img,.mt img,.ghead img{border-radius:2px;vertical-align:-2px;margin-right:7px;box-shadow:0 0 0 .5px rgba(255,255,255,.14)}
-tbody tr{transition:background .12s}tbody tr:hover{background:rgba(91,155,255,.06)}
+.nm img,td img,.mt img,.ghead img{border-radius:2px;vertical-align:-2px;margin-right:8px;box-shadow:0 0 0 .5px rgba(255,255,255,.12)}
+tbody tr{transition:background .12s}tbody tr:hover{background:rgba(240,178,62,.05)}
 table{width:100%;border-collapse:collapse;font-size:14px}.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
-th,td{text-align:right;padding:9px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+th,td{text-align:right;padding:10px 9px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
 td:not(:first-child){font-family:'Space Grotesk',sans-serif}
-th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
-tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:12px}
+th:first-child,td:first-child{text-align:left}th{color:var(--muted);font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;margin-top:14px}
 .hint{font-size:11px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0}
 .preds{display:flex;flex-direction:column;gap:5px}
-.pred{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:8px;flex-wrap:wrap;padding:4px 8px;border-radius:7px}
-.pred:nth-child(even){background:rgba(255,255,255,.018)}
+.pred{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;gap:8px;flex-wrap:wrap;padding:5px 9px;border-radius:var(--r-ctl)}
+.pred:nth-child(even){background:rgba(255,255,255,.02)}
 .pred.dim{opacity:.5}.pred .sc{font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600;margin:0 2px}
-.grp{font-size:11px;font-weight:700;color:var(--accent2);text-transform:uppercase;letter-spacing:.06em;margin:16px 0 6px;padding-top:12px;border-top:1px solid var(--line)}
+.grp{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.07em;margin:18px 0 7px;padding-top:14px;border-top:1px solid var(--line)}
 .grp.first{border-top:none;padding-top:0;margin-top:2px}
 .badge{font-size:11.5px;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:600}
-.b-pend{background:#1a212c;color:#8a94a6}.b-ok{background:rgba(63,185,80,.14);color:#56d364}.b-no{background:rgba(248,81,73,.13);color:#f85149}.b-done{background:#1a212c;color:#6e7681}.b-amber{background:rgba(245,196,81,.14);color:var(--gold)}
-.hcsum{font-size:13px;color:var(--muted);margin-bottom:14px}
+.b-pend{background:#191d24;color:var(--muted)}.b-ok{background:rgba(97,192,125,.14);color:var(--pos)}.b-no{background:rgba(224,115,107,.13);color:var(--neg)}.b-done{background:#191d24;color:#6b6b63}.b-amber{background:rgba(240,178,62,.14);color:var(--accent)}
+.hcsum{font-size:13px;color:var(--muted);margin-bottom:16px}
 .hcgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:8px}
-.hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0c121c;border:1px solid var(--line);border-radius:9px;padding:8px 11px;transition:border-color .15s}
+.hc{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;background:#0f1217;border:1px solid var(--line);border-radius:var(--r-ctl);padding:9px 12px;transition:border-color .15s}
 .hc:hover{border-color:var(--line2)}.hc .sc{font-family:'Space Grotesk',sans-serif;font-weight:600;margin:0 3px}
-.hc .lean{color:var(--muted);font-size:11px;margin-left:5px;white-space:nowrap}.hc .lean-ok{color:#56d364}.hc .lean-no{color:#f85149}
+.hc .lean{color:var(--muted);font-size:11px;margin-left:5px;white-space:nowrap}.hc .lean-ok{color:var(--pos)}.hc .lean-no{color:var(--neg)}
 .games{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
-.game{padding:18px 20px;margin:0}
-.ghead{font-family:'Space Grotesk',sans-serif;font-size:15.5px;font-weight:600;margin-bottom:13px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
+.game{padding:20px 22px;margin:0}
+.ghead{font-family:'Space Grotesk',sans-serif;font-size:15.5px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:4px}
 .ghead .vs{color:var(--muted);font-weight:400;margin:0 5px}
-.bet{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.bet{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line);flex-wrap:wrap}
 .bet:first-of-type{border-top:none}
 .bsel{display:flex;align-items:center;gap:8px;font-size:13.5px;min-width:0}
 .bmeta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);white-space:nowrap}
-.edge{color:var(--ink);font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}.edge.pos{color:#56d364}
+.edge{color:var(--ink);font-family:'Space Grotesk',sans-serif;font-variant-numeric:tabular-nums;font-weight:600}.edge.pos{color:var(--pos)}
 .vb{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;padding:2px 7px;border-radius:5px;white-space:nowrap}
-.vb.bet{background:rgba(63,185,80,.15);color:#56d364}.vb.lean{background:rgba(245,196,81,.15);color:var(--gold)}.vb.avoid{background:#1a212c;color:#6e7681}
-.vb.mkt{background:rgba(91,155,255,.15);color:var(--accent2)}
-.gfoot{color:var(--muted);font-size:11.5px;margin-top:12px}
-.gkick{font-size:11.5px;color:var(--accent2);font-weight:600;margin:-4px 0 10px;font-variant-numeric:tabular-nums}
-.gadv{font-size:11.5px;color:var(--muted);margin:-4px 0 10px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink);font-family:'Space Grotesk',sans-serif}
-.note{background:linear-gradient(165deg,#141a24,#12171f);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:13px 15px;font-size:12.5px;color:var(--muted);margin-bottom:20px}
+.vb.bet{background:rgba(97,192,125,.15);color:var(--pos)}.vb.lean{background:rgba(240,178,62,.15);color:var(--accent)}.vb.avoid{background:#191d24;color:#6b6b63}
+.vb.mkt{background:rgba(240,178,62,.12);color:var(--accent)}
+.gfoot{color:var(--muted);font-size:11.5px;margin-top:13px}
+.gkick{font-size:11.5px;color:var(--accent);font-weight:600;margin:-5px 0 11px;font-variant-numeric:tabular-nums}
+.gadv{font-size:11.5px;color:var(--muted);margin:-5px 0 11px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink);font-family:'Space Grotesk',sans-serif}
+.note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-ctl);padding:14px 16px;font-size:12.5px;color:var(--muted);margin-bottom:22px}
 .note b{color:var(--ink)}
-.sitefoot{max-width:1060px;margin:0 auto;padding:22px 20px;color:#6e7681;font-size:11px;line-height:1.7;border-top:1px solid var(--line)}.sitefoot b{color:#8a94a6}
+.sitefoot{max-width:1040px;margin:0 auto;padding:26px 22px;color:#6b6b63;font-size:11px;line-height:1.7;border-top:1px solid var(--line)}.sitefoot b{color:var(--muted)}
 @media(max-width:640px){
-.wrap{padding:22px 13px 56px}.nav .inner{padding:0 13px}
-h1{font-size:27px}.sub{font-size:13px}
-.card{padding:17px 14px;border-radius:14px}.card h2{font-size:12px}.game{padding:15px}
-.bar{grid-template-columns:20px 92px 1fr 44px;gap:8px;font-size:13px}.bar .nm img{margin-right:5px}
+.wrap{padding:26px 14px 60px}.nav .inner{padding:0 14px}
+h1{font-size:29px}.sub{font-size:13.5px}
+.card{padding:18px 15px}.card h2{font-size:11.5px}.game{padding:16px}
+.bar{grid-template-columns:20px 94px 1fr 44px;gap:9px;font-size:13px}.bar .nm img{margin-right:5px}
 table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
-th,td{padding:8px 5px;font-size:12.5px}.col-opt{display:none}
+th,td{padding:9px 5px;font-size:12.5px}.col-opt{display:none}
 .hcgrid,.games{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}.pred{font-size:12px}
 .bmeta{font-size:11px;gap:6px}
 }
@@ -603,7 +605,7 @@ DISCLAIMER = (
     'for educational and informational purposes only. Nothing on this site is betting, financial, or '
     'investment advice, no result is guaranteed, and modelled performance does not predict future '
     'outcomes. We are not a bookmaker, do not accept or place wagers, and are not affiliated with any '
-    'sportsbook &mdash; odds are shown for comparison only and may be inaccurate or out of date. Any '
+    'sportsbook. Odds are shown for comparison only and may be inaccurate or out of date. Any '
     'decision you make is your own, and we accept no liability for any loss or damage arising from use '
     'of this information. Betting carries financial risk; only stake what you can afford to lose. '
     '18+ (21+ where required). If gambling is a problem, call 1-800-GAMBLER.</div>')
@@ -620,7 +622,7 @@ def _page(active: str, title: str, body: str) -> str:
             f'<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
             f'<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">'
             f'{CSS}</head><body><div class="nav"><div class="inner">'
-            f'<span class="brand">WC2026</span>{links}</div></div>'
+            f'<span class="brand">WC<b>2026</b></span>{links}</div></div>'
             f'<div class="wrap">{body}</div>{DISCLAIMER}</body></html>')
 
 
@@ -630,7 +632,7 @@ def _hero(title: str, sub: str, phase: str) -> str:
 
 
 def _pc(c, i, n):
-    return f"{c[i] / n:.1%}" if c[i] else "—"
+    return f"{c[i] / n:.1%}" if c[i] else "-"
 
 
 def render_overview(teams, order, R, n_sims, phase) -> str:
@@ -643,7 +645,7 @@ def render_overview(teams, order, R, n_sims, phase) -> str:
         for rank, i in enumerate(order[:32], 1))
     sub = ("Dixon-Coles + connectivity-weighted squad value, blended with pi-ratings, altitude-aware "
            f"&middot; {n_sims:,} Monte-Carlo runs")
-    foot = ('<p class="foot">A calibrated distribution, not a single pick &mdash; the favourite '
+    foot = ('<p class="foot">A calibrated distribution, not a single pick. The favourite '
             'tops out ~16%. See <a href="table.html" style="color:var(--accent2)">all teams</a>.</p>')
     return (_hero("2026 World Cup forecast", sub, phase)
             + f'<div class="card"><h2>Title odds <span class="hint">top 32</span></h2>'
@@ -679,12 +681,12 @@ def render_knockout_results(grouped):
         out.append(f'<div class="grp{" first" if gi == 0 else ""}">{label}</div>')
         for r in rows:
             if r["status"] == "upcoming":                       # predicted score + backed advancer
-                score = f'{r["pa"]}&ndash;{r["pb"]}'
+                score = f'{r["pa"]}-{r["pb"]}'
                 adv = (f'<span class="lean">&rarr; {short(r["winner"])} '
                        f'{r["win_p"]*100:.0f}%</span>')
                 badge = '<span class="badge b-pend">upcoming</span>'
             else:                                               # played: actual score + who advanced
-                score = f'<b>{r["act_a"]}&ndash;{r["act_b"]}</b>'
+                score = f'<b>{r["act_a"]}-{r["act_b"]}</b>'
                 pens = ' <span class="lean">(pens)</span>' if r["pens"] else ''
                 adv = (f'<span class="lean lean-ok">&rarr; {short(r["winner"])} '
                        f'advances{pens}</span>')
@@ -762,7 +764,7 @@ def render_bets() -> str | None:
     note = ('<div class="note"><b>Edge</b> = model probability &minus; <b>Pinnacle&rsquo;s '
             'de-vigged line</b> (the sharpest market = best estimate of true probability); '
             'odds shown are the best price across books. Top 5 de-correlated picks per game. '
-            '<b>Totals &amp; BTTS markets show as leans only</b> &mdash; the model&rsquo;s goal totals '
+            '<b>Totals &amp; BTTS markets show as leans only</b>. The model&rsquo;s goal totals '
             'aren&rsquo;t calibrated yet, so they aren&rsquo;t staked as bets. No historical odds = '
             'not ROI-backtested. The <b>market-anchored forecast</b> blends the model with '
             'Pinnacle&rsquo;s de-vigged line (the sharpest probability estimate); it&rsquo;s '
@@ -772,13 +774,13 @@ def render_bets() -> str | None:
     cs = clv.summary()
     if cs["settled"]:
         clv_line = (f'<div class="note"><b>Closing Line Value: {cs["avg_clv"]:+.1%}</b> over '
-                    f'{cs["settled"]} settled picks &mdash; '
+                    f'{cs["settled"]} settled picks: '
                     + ('the model is beating the market’s closing price (real edge).'
                        if cs["avg_clv"] > 0 else 'behind the closing line so far.') + '</div>')
     else:
         clv_line = (f'<div class="note">CLV validation active: {cs["logged"]} picks logged. '
-                    'Closing Line Value &mdash; whether our entry price beats the market’s '
-                    'final price &mdash; populates as games kick off; positive average CLV is the '
+                    'Closing Line Value (whether our entry price beats the market’s '
+                    'final price) populates as games kick off; positive average CLV is the '
                     'evidence the edges are real.</div>')
     body = (head + note + clv_line + (f'<div class="games">{"".join(cards)}</div>' if cards
             else '<div class="card"><p style="color:var(--muted);margin:0">No positive-edge '
