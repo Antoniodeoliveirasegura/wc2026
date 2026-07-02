@@ -318,5 +318,21 @@
   },
   "adv": "Brazil",
   "locked": "2026-07-01"
+ },
+ "England|Mexico": {
+  "pred": {
+   "Mexico": 0,
+   "England": 1
+  },
+  "adv": "England",
+  "locked": "2026-07-02"
+ },
+ "Belgium|United States": {
+  "pred": {
+   "United States": 1,
+   "Belgium": 1
+  },
+  "adv": "Belgium",
+  "locked": "2026-07-02"
  }
 }
