@@ -334,5 +334,13 @@
   },
   "adv": "Belgium",
   "locked": "2026-07-02"
+ },
+ "Portugal|Spain": {
+  "pred": {
+   "Portugal": 1,
+   "Spain": 1
+  },
+  "adv": "Spain",
+  "locked": "2026-07-03"
  }
 }
