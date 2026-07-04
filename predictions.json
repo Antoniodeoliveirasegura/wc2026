@@ -342,5 +342,21 @@
   },
   "adv": "Spain",
   "locked": "2026-07-03"
+ },
+ "Argentina|Egypt": {
+  "pred": {
+   "Argentina": 2,
+   "Egypt": 0
+  },
+  "adv": "Argentina",
+  "locked": "2026-07-04"
+ },
+ "Colombia|Switzerland": {
+  "pred": {
+   "Switzerland": 1,
+   "Colombia": 1
+  },
+  "adv": "Colombia",
+  "locked": "2026-07-04"
  }
 }
