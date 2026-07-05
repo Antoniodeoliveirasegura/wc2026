@@ -358,5 +358,13 @@
   },
   "adv": "Colombia",
   "locked": "2026-07-04"
+ },
+ "France|Morocco": {
+  "pred": {
+   "France": 1,
+   "Morocco": 0
+  },
+  "adv": "France",
+  "locked": "2026-07-05"
  }
 }
