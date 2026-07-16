@@ -1,12 +1,11 @@
 # 2026 World Cup forecast
 
-_Knockouts - 29 games played, 3 teams alive_
+_Knockouts - 30 games played, 2 teams alive_
 
 | Team | Qualify | Champion | Final | Semi | R16 |
 |---|---|---|---|---|---|
-| Spain | 100.0% | 41.4% | 71.7% | 0.0% | 0.0% |
-| Argentina | 100.0% | 34.6% | 68.0% | 0.0% | 0.0% |
-| England | 100.0% | 24.0% | 60.3% | 0.0% | 0.0% |
+| Spain | 100.0% | 53.0% | 100.0% | 0.0% | 0.0% |
+| Argentina | 100.0% | 47.0% | 100.0% | 0.0% | 0.0% |
 | Algeria | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Australia | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Austria | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
@@ -22,6 +21,7 @@ _Knockouts - 29 games played, 3 teams alive_
 | DR Congo | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Ecuador | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Egypt | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| England | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | France | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Germany | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Ghana | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |

@@ -406,5 +406,21 @@
   },
   "adv": "Argentina",
   "locked": "2026-07-13"
+ },
+ "England|France": {
+  "pred": {
+   "France": 1,
+   "England": 1
+  },
+  "adv": "France",
+  "locked": "2026-07-16"
+ },
+ "Argentina|Spain": {
+  "pred": {
+   "Spain": 1,
+   "Argentina": 1
+  },
+  "adv": "Spain",
+  "locked": "2026-07-16"
  }
 }
