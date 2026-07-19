@@ -1,10 +1,10 @@
 # 2026 World Cup forecast
 
-_Knockouts - 30 games played, 2 teams alive_
+_Knockouts - 31 games played, 2 teams alive_
 
 | Team | Qualify | Champion | Final | Semi | R16 |
 |---|---|---|---|---|---|
-| Spain | 100.0% | 53.0% | 100.0% | 0.0% | 0.0% |
+| Spain | 100.0% | 52.9% | 100.0% | 0.0% | 0.0% |
 | Argentina | 100.0% | 47.0% | 100.0% | 0.0% | 0.0% |
 | Algeria | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
 | Australia | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
