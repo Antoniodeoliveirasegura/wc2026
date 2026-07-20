@@ -62,7 +62,13 @@ Grounded in the literature: Groll et al.'s hybrid random forest, Caley's "PADDLI
     python simulate.py         # tournament forecast (auto-downloads data)
     python wc_model.py         # engine + out-of-sample validation
     python mv_connectivity.py  # the market-value validation
+    python pre_wc_odds.py      # reconstructed pre-tournament title odds
     pytest -q                  # tests
+
+The 2026 tournament is over, so `simulate.py` now writes the finished-tournament pages
+(final standings + model report card) and the auto-update schedule is off. `pre_wc_odds.py`
+refits both ratings on pre-11-Jun data only and replays the whole tournament from an empty
+table; it is a backtest of the method, **not** a forecast that was published in advance.
 
 Data auto-downloads: international results (`martj42`) + national-team squad values
 (`dcaribou/transfermarkt-datasets`); both gitignored. The 4 priciest squads

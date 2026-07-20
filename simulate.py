@@ -589,6 +589,9 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .gfoot{color:var(--muted);font-size:11.5px;margin-top:13px}
 .gkick{font-size:11.5px;color:var(--accent);font-weight:600;margin:-5px 0 11px;font-variant-numeric:tabular-nums}
 .gadv{font-size:11.5px;color:var(--muted);margin:-5px 0 11px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink);font-family:'Space Grotesk',sans-serif}
+.pbar{grid-template-columns:22px 112px 1fr 44px 102px;font-size:13.5px}
+.pbar .fin{font-size:11px;color:var(--muted);text-align:right;white-space:nowrap}
+.pbar .fin.top{color:var(--accent);font-weight:600}
 .pod{display:flex;flex-direction:column;gap:8px}
 .pod-row{display:grid;grid-template-columns:104px 1fr auto;align-items:center;gap:14px;padding:12px 15px;background:#0f1217;border:1px solid var(--line);border-radius:var(--r-ctl)}
 .pod-row .pl{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
@@ -612,6 +615,8 @@ h1{font-size:29px}.sub{font-size:13.5px}
 table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
 th,td{padding:9px 5px;font-size:12.5px}.col-opt{display:none}
 .hcgrid,.games{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}.pred{font-size:12px}
+.pbar{grid-template-columns:20px 1fr 42px;gap:4px 9px}
+.pbar .track{display:none}.pbar .fin{grid-column:2/-1;text-align:left;font-size:10.5px}
 .pod-row{grid-template-columns:1fr auto;gap:3px 10px;padding:11px 13px}
 .pod-row .pl{grid-column:1/-1}.pod-row .via{font-size:11px}.pod-row.gold .tm{font-size:20px}
 .stat{padding:13px 14px}.stat .n{font-size:23px}
@@ -762,6 +767,42 @@ def _decider(ko_grouped, label):
             + (" <span class='lean'>(pens)</span>" if r["pens"] else ""))
 
 
+PRE_ODDS_FILE = os.path.join(os.path.dirname(__file__), "pre_wc_odds.json")
+TOP4 = ("Champions", "Runners-up", "Third place", "Fourth place")
+
+
+def render_pre_odds(place, champion, top_n=12) -> str:
+    """Reconstructed pre-tournament title odds (pre_wc_odds.py) beside where each team
+    actually finished. Empty string if the artifact hasn't been generated."""
+    if not os.path.exists(PRE_ODDS_FILE):
+        return ""
+    d = json.load(open(PRE_ODDS_FILE, encoding="utf-8"))
+    ranked = sorted(d["teams"].items(), key=lambda kv: -kv[1]["champ"])
+    mx = max((v["champ"] for _, v in ranked), default=0) or 1
+    bars = "".join(
+        f'<div class="bar pbar{" lead" if place.get(t) == "Champions" else ""}">'
+        f'<span class="rk">{rank}</span><span class="nm">{flag(t)}{short(t)}</span>'
+        f'<span class="track"><span class="fill" '
+        f'style="width:{max(2, v["champ"] / mx * 100):.0f}%"></span></span>'
+        f'<span class="v">{v["champ"]:.1%}</span>'
+        f'<span class="fin{" top" if place.get(t) in TOP4 else ""}">'
+        f'{place.get(t, "")}</span></div>'
+        for rank, (t, v) in enumerate(ranked[:top_n], 1))
+
+    cr = next((i for i, (t, _) in enumerate(ranked, 1) if t == champion), None)
+    hit = sum(1 for t, _ in ranked[:4] if place.get(t) in TOP4)
+    lead = (f'{champion} went in as the model&rsquo;s <b>no.{cr} pick '
+            f'({dict(ranked)[champion]["champ"]:.1%})</b>. ' if cr else "")
+    return ('<div class="card"><h2>Pre-tournament odds vs what happened '
+            '<span class="hint">reconstructed &middot; both ratings fit only on pre-11 Jun '
+            f'data</span></h2><div class="bars">{bars}</div>'
+            f'<p class="foot">{lead}{hit} of its top four finished in the top four. '
+            '<b>This is a reconstruction, not a published call</b> &mdash; it was computed '
+            'after the tournament from a model that never saw a tournament result, so it '
+            'is an honest backtest of the method, not evidence the forecast was made in '
+            'advance.</p></div>')
+
+
 def render_final_overview(teams, place, champion, hc, ko_grouped) -> str:
     """Tournament-over front page: who actually won, and how the model's pre-tournament
     call held up. The live version (title odds bars) is meaningless once one team is left."""
@@ -791,6 +832,7 @@ def render_final_overview(teams, place, champion, hc, ko_grouped) -> str:
                   "Tournament complete")
             + f'<div class="card"><h2>Final standings <span class="hint">104 games played'
               f'</span></h2><div class="pod">{pod}</div></div>'
+            + render_pre_odds(place, champion)
             + '<div class="card"><h2>Model report card <span class="hint">pre-tournament model '
               '&middot; fit only on data before 11 Jun 2026, no hindsight</span></h2>'
               f'<div class="stats">{stats}</div>'
