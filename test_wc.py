@@ -95,3 +95,38 @@ def test_simulate_from_groups_qualifies_32():
     R = sim.simulate_from_groups(groups_idx, base, [], A, n_sims=200)
     assert sum(R["champ"].values()) == 200
     assert sum(R["qualify"].values()) == 200 * 32   # 2 per group + 8 thirds
+
+
+def _bracket():
+    """Tail of a bracket where the two semi-final losers meet again in the third-place
+    play-off -- the case that makes 'a team loses at most once' false."""
+    def tie(a, b, winner):
+        return {"a": a, "b": b, "act_a": 1, "act_b": 0, "winner": winner,
+                "pens": False, "status": "result"}
+    return [("Final", [tie("A", "C", "A")]),
+            ("Third-place play-off", [tie("B", "D", "B")]),
+            ("Semi-finals", [tie("A", "B", "A"), tie("C", "D", "C")]),
+            ("Quarter-finals", [tie("A", "E", "A")])]
+
+
+def test_final_standings_splits_semifinal_losers_into_third_and_fourth():
+    place, champion = sim.final_standings(_bracket(), ["A", "B", "C", "D", "E", "F"])
+    assert champion == "A"
+    assert place == {"A": "Champions", "B": "Third place", "C": "Runners-up",
+                     "D": "Fourth place", "E": "Quarter-finals", "F": "Group stage"}
+
+
+def test_final_standings_is_order_independent():
+    teams = ["A", "B", "C", "D", "E", "F"]
+    forward = sim.final_standings(list(reversed(_bracket())), teams)
+    assert forward == sim.final_standings(_bracket(), teams)
+
+
+def test_final_standings_ignores_unplayed_ties():
+    """Mid-tournament the bracket carries 'upcoming' rows with no winner; they must not
+    place anybody."""
+    ko = [("Quarter-finals", [{"a": "A", "b": "B", "pa": 2, "pb": 1, "winner": "A",
+                               "win_p": 0.6, "status": "upcoming"}])]
+    place, champion = sim.final_standings(ko, ["A", "B"])
+    assert champion is None
+    assert place == {"A": "Group stage", "B": "Group stage"}

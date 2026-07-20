@@ -322,7 +322,7 @@ def predict_knockout(m, zmap, confmap, fixtures):
     return rows
 
 ROUND_SEQ = {1: "Round of 32", 2: "Round of 16", 3: "Quarter-finals",
-             4: "Semi-finals", 5: "Final"}
+             4: "Semi-finals", 4.5: "Third-place play-off", 5: "Final"}
 
 def update_and_grade_knockout(m, zmap, confmap, df, wcdf):
     """Knockout bracket BY ROUND, the group-scores treatment for ties: PLAYED ties show the
@@ -343,12 +343,18 @@ def update_and_grade_knockout(m, zmap, confmap, df, wcdf):
     with open(PRED_FILE, "w", encoding="utf-8") as f:
         json.dump(preds, f, ensure_ascii=False, indent=1)
 
-    cnt = collections.Counter(); by_round = collections.defaultdict(list)
+    cnt = collections.Counter(); by_round = collections.defaultdict(list); lost = set()
     for r in kdf.sort_values("date").itertuples(index=False):     # played ties, chronological
         h, a, hs, as_ = r.home_team, r.away_team, int(r.home_score), int(r.away_score)
         ri = max(cnt[h], cnt[a]) + 1; cnt[h] += 1; cnt[a] += 1     # per-team KO ordinal -> round
+        # Third-place play-off: the only tie contested by two ALREADY-eliminated teams. It shares
+        # the final's ordinal (both sides' 5th knockout game), so without this it lands in the
+        # "Final" bucket. 4.5 sorts it between the semis and the final.
+        if h in lost and a in lost:
+            ri -= 0.5
         key = (str(pd.Timestamp(r.date).date()), frozenset((h, a)))
         winner = h if hs > as_ else a if as_ > hs else shoot.get(key, h)
+        lost.add(a if winner == h else h)
         row = {"a": h, "b": a, "act_a": hs, "act_b": as_, "winner": winner, "pens": hs == as_}
         p = preds.get(pred_key(h, a))
         if p and "adv" in p:                                       # graded vs the locked call
@@ -361,7 +367,9 @@ def update_and_grade_knockout(m, zmap, confmap, df, wcdf):
         ri = max(cnt[pr["a"]], cnt[pr["b"]]) + 1; cnt[pr["a"]] += 1; cnt[pr["b"]] += 1
         by_round[ri].append({"a": pr["a"], "b": pr["b"], "pa": pr["pa"], "pb": pr["pb"],
                              "winner": pr["winner"], "win_p": pr["win_p"], "status": "upcoming"})
-    return [(ROUND_SEQ.get(ri, f"Round {ri}"), by_round[ri]) for ri in sorted(by_round)]
+    # Latest round first: Final, third-place, semis, quarters, R16, R32.
+    return [(ROUND_SEQ.get(ri, f"Round {ri}"), by_round[ri])
+            for ri in sorted(by_round, reverse=True)]
 
 def update_and_grade(m, zmap, confmap, rem, gdf, groups):
     """Lock a predicted score for each UPCOMING game (never overwritten -> only ever
@@ -581,6 +589,18 @@ tr:last-child td{border-bottom:none}.foot{color:var(--muted);font-size:13px;marg
 .gfoot{color:var(--muted);font-size:11.5px;margin-top:13px}
 .gkick{font-size:11.5px;color:var(--accent);font-weight:600;margin:-5px 0 11px;font-variant-numeric:tabular-nums}
 .gadv{font-size:11.5px;color:var(--muted);margin:-5px 0 11px;font-variant-numeric:tabular-nums}.gadv b{color:var(--ink);font-family:'Space Grotesk',sans-serif}
+.pod{display:flex;flex-direction:column;gap:8px}
+.pod-row{display:grid;grid-template-columns:104px 1fr auto;align-items:center;gap:14px;padding:12px 15px;background:#0f1217;border:1px solid var(--line);border-radius:var(--r-ctl)}
+.pod-row .pl{font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.pod-row .tm{font-size:16px;font-weight:600;color:var(--ink2)}
+.pod-row .via{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.pod-row.gold{border-color:rgba(240,178,62,.38);background:linear-gradient(90deg,rgba(240,178,62,.10),rgba(240,178,62,.015))}
+.pod-row.gold .pl{color:var(--accent)}
+.pod-row.gold .tm{font-family:'Space Grotesk',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.02em;color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:10px}
+.stat{background:#0f1217;border:1px solid var(--line);border-radius:var(--r-ctl);padding:15px 16px}
+.stat .n{font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;letter-spacing:-.02em;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.45}
 .note{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:var(--r-ctl);padding:14px 16px;font-size:12.5px;color:var(--muted);margin-bottom:22px}
 .note b{color:var(--ink)}
 .sitefoot{max-width:1040px;margin:0 auto;padding:26px 22px;color:#6b6b63;font-size:11px;line-height:1.7;border-top:1px solid var(--line)}.sitefoot b{color:var(--muted)}
@@ -592,6 +612,9 @@ h1{font-size:29px}.sub{font-size:13.5px}
 table{table-layout:fixed}th:first-child,td:first-child{width:44%;overflow-wrap:break-word}
 th,td{padding:9px 5px;font-size:12.5px}.col-opt{display:none}
 .hcgrid,.games{grid-template-columns:1fr}.hc{font-size:12px;flex-wrap:wrap}.pred{font-size:12px}
+.pod-row{grid-template-columns:1fr auto;gap:3px 10px;padding:11px 13px}
+.pod-row .pl{grid-column:1/-1}.pod-row .via{font-size:11px}.pod-row.gold .tm{font-size:20px}
+.stat{padding:13px 14px}.stat .n{font-size:23px}
 .bmeta{font-size:11px;gap:6px}
 }
 </style>"""
@@ -701,13 +724,103 @@ def render_knockout_results(grouped):
     return '<div class="preds">' + "".join(out) + "</div>"
 
 
+PLACE_RANK = {"Champions": 0, "Runners-up": 1, "Third place": 2, "Fourth place": 3,
+              "Semi-finals": 4, "Quarter-finals": 5, "Round of 16": 6, "Round of 32": 7,
+              "Group stage": 8}
+
+
+def final_standings(ko_grouped, teams):
+    """Where every team actually finished, read off the played bracket.
+
+    Single-elimination means a team loses at most once -- except the two semi-final losers,
+    who meet again in the third-place play-off. So the final and that play-off are resolved
+    first (they name an exact place), and every other team then falls back to the round it
+    lost in. Returns ({team: place label}, champion or None)."""
+    rounds = dict(ko_grouped)
+    played = lambda rows: [r for r in rows if r["status"] != "upcoming"]
+    loser = lambda r: r["b"] if r["winner"] == r["a"] else r["a"]
+    place = {}
+    for label, won, lost in (("Final", "Champions", "Runners-up"),
+                             ("Third-place play-off", "Third place", "Fourth place")):
+        for r in played(rounds.get(label, [])):
+            place[r["winner"]] = won; place[loser(r)] = lost
+    for label, rows in ko_grouped:                    # everyone else exits where they lost
+        for r in played(rows):
+            place.setdefault(loser(r), label)
+    for t in teams:                                   # never reached the knockouts
+        place.setdefault(t, "Group stage")
+    return place, next((t for t, p in place.items() if p == "Champions"), None)
+
+
+def _decider(ko_grouped, label):
+    """One-line 'how that place was settled' for the final / third-place tie."""
+    rows = [r for r in dict(ko_grouped).get(label, []) if r["status"] != "upcoming"]
+    if not rows:
+        return ""
+    r = rows[0]
+    return (f'{short(r["a"])} {r["act_a"]}&ndash;{r["act_b"]} {short(r["b"])}'
+            + (" <span class='lean'>(pens)</span>" if r["pens"] else ""))
+
+
+def render_final_overview(teams, place, champion, hc, ko_grouped) -> str:
+    """Tournament-over front page: who actually won, and how the model's pre-tournament
+    call held up. The live version (title odds bars) is meaningless once one team is left."""
+    fin, third = _decider(ko_grouped, "Final"), _decider(ko_grouped, "Third-place play-off")
+    by_place = {p: t for t, p in place.items()}
+    pod = "".join(
+        f'<div class="pod-row{" gold" if lbl == "Champions" else ""}">'
+        f'<span class="pl">{lbl}</span>'
+        f'<span class="tm">{flag(by_place.get(lbl, ""))}{by_place.get(lbl, "-")}</span>'
+        f'<span class="via">{via}</span></div>'
+        for lbl, via in (("Champions", fin), ("Runners-up", fin),
+                         ("Third place", third), ("Fourth place", third))
+        if lbl in by_place)
+
+    g, k = hc["group"], hc["knockout"]                 # (rows, exact, ok, n, dec_ok, dec_n)
+    exact, ok, n = g[1] + k[1], g[2] + k[2], g[3] + k[3]
+    dec_ok, dec_n = g[4] + k[4], g[5] + k[5]
+    stats = "".join(f'<div class="stat"><div class="n">{v}</div><div class="l">{l}</div></div>'
+                    for v, l in (
+                        (f"{ok/n:.0%}" if n else "-", f"outcomes called right ({ok}/{n})"),
+                        (f"{exact}", f"exact scorelines out of {n}"),
+                        (f"{dec_ok/dec_n:.0%}" if dec_n else "-",
+                         f"winner picked right ({dec_ok}/{dec_n} decided games)")))
+
+    return (_hero("2026 World Cup", f"{champion} win the 2026 World Cup. Final result and a "
+                  "report card for the model, now that every game has been played.",
+                  "Tournament complete")
+            + f'<div class="card"><h2>Final standings <span class="hint">104 games played'
+              f'</span></h2><div class="pod">{pod}</div></div>'
+            + '<div class="card"><h2>Model report card <span class="hint">pre-tournament model '
+              '&middot; fit only on data before 11 Jun 2026, no hindsight</span></h2>'
+              f'<div class="stats">{stats}</div>'
+              '<p class="foot">Every 2026 game scored by a model that never saw a single '
+              'tournament result. Game-by-game breakdowns are on the '
+              '<a href="scores.html" style="color:var(--accent)">group</a> and '
+              '<a href="knockout.html" style="color:var(--accent)">knockout</a> pages.</p></div>')
+
+
+def render_final_table(teams, place) -> str:
+    rows = "".join(
+        f"<tr><td>{flag(t)}{t}</td><td>{place[t]}</td></tr>"
+        for t in sorted(teams, key=lambda x: (PLACE_RANK.get(place[x], 9), x)))
+    return (_hero("All teams", "Where each of the 48 teams finished", "Tournament complete")
+            + '<div class="card"><div class="tbl"><table><thead><tr><th>Team</th>'
+              f'<th>Finished</th></tr></thead><tbody>{rows}</tbody></table></div></div>')
+
+
 def render_knockout(ko_grouped, hc, phase) -> str:
     ko = hc["knockout"]
     ko_hint = ("someone advances &middot; penalty shootouts resolved" if ko[3]
                else "fills in as ties are played")
-    return (_hero("Knockout scores", "Results and who advanced, with predictions for upcoming ties", phase)
-            + '<div class="card"><h2>Knockout bracket <span class="hint">played = actual score '
-            f'&amp; who advanced &middot; upcoming = prediction</span></h2>'
+    done = not any(r["status"] == "upcoming" for _, rows in ko_grouped for r in rows)
+    sub, hint = (("The complete bracket, final first.",
+                  "actual score &amp; who advanced &middot; graded against the locked pre-match call")
+                 if done else
+                 ("Results and who advanced, with predictions for upcoming ties",
+                  "played = actual score &amp; who advanced &middot; upcoming = prediction"))
+    return (_hero("Knockout scores", sub, phase)
+            + f'<div class="card"><h2>Knockout bracket <span class="hint">{hint}</span></h2>'
             f'{render_knockout_results(ko_grouped)}</div>'
             + f'<div class="card"><h2>Knockout hindcast <span class="hint">{ko_hint}</span></h2>'
             f'{render_hindcast(ko)}</div>')
@@ -723,8 +836,10 @@ def _kickoff(iso: str | None) -> str:
         return ""
 
 
-def render_bets() -> str | None:
-    """Bake bets.json (from recommend_bets.py) into a static page. None if no data yet."""
+def render_bets(final=False) -> str | None:
+    """Bake bets.json (from recommend_bets.py) into a static page. None if no data yet.
+    final=True labels the page as a closed archive: the slate is whatever was last fetched
+    before the tournament ended, and no further odds or settlements are coming."""
     path = os.path.join(os.path.dirname(__file__), "bets.json")
     if not os.path.exists(path):
         return None
@@ -769,14 +884,26 @@ def render_bets() -> str | None:
             'not ROI-backtested. The <b>market-anchored forecast</b> blends the model with '
             'Pinnacle&rsquo;s de-vigged line (the sharpest probability estimate); it&rsquo;s '
             'experimental and judged live by CLV. Informational, not betting advice.</div>')
-    head = _hero("Value bets", "Model probabilities vs live sportsbook odds",
-                 f'updated {d.get("generatedAt", "")}')
+    head = _hero("Value bets",
+                 "Model probabilities against the sportsbook odds of the day"
+                 + (" &mdash; archived exactly as the last refresh left it." if final
+                    else ""),
+                 (f'Closed &middot; last refreshed {d.get("generatedAt", "")}' if final
+                  else f'updated {d.get("generatedAt", "")}'))
     cs = clv.summary()
     if cs["settled"]:
         clv_line = (f'<div class="note"><b>Closing Line Value: {cs["avg_clv"]:+.1%}</b> over '
                     f'{cs["settled"]} settled picks: '
-                    + ('the model is beating the market’s closing price (real edge).'
-                       if cs["avg_clv"] > 0 else 'behind the closing line so far.') + '</div>')
+                    + ('the model ' + ('beat' if final else 'is beating')
+                       + ' the market’s closing price (real edge).'
+                       if cs["avg_clv"] > 0 else
+                       'behind the closing line' + ('.' if final else ' so far.')) + '</div>')
+    elif final:
+        clv_line = (f'<div class="note"><b>CLV was never settled.</b> {cs["logged"]} picks were '
+                    'logged but no closing prices were captured against them, so this run '
+                    'produced <b>no evidence either way</b> on whether the edges were real. '
+                    'Treat the slate below as a record of what the model said, not as a '
+                    'validated result.</div>')
     else:
         clv_line = (f'<div class="note">CLV validation active: {cs["logged"]} picks logged. '
                     'Closing Line Value (whether our entry price beats the market’s '
@@ -794,11 +921,20 @@ def _bets_placeholder() -> str:
             'Run <code>python recommend_bets.py</code> (needs ODDS_API_KEY) to populate this page.</p></div>')
 
 
-def write_site(teams, order, R, n_sims, phase, preds, hc, ko_grouped, docsdir):
+def write_site(teams, order, R, n_sims, phase, preds, hc, ko_grouped, docsdir, champion=None):
+    """champion set => the tournament is over, so the front page and the team table show what
+    actually happened instead of a forecast that has collapsed onto a single certain team."""
     os.makedirs(docsdir, exist_ok=True)
+    if champion:
+        place, _ = final_standings(ko_grouped, teams)
+        overview = render_final_overview(teams, place, champion, hc, ko_grouped)
+        table = render_final_table(teams, place)
+    else:
+        overview = render_overview(teams, order, R, n_sims, phase)
+        table = render_table(teams, order, R, n_sims, phase)
     pages = {
-        "index.html": ("2026 World Cup Forecast", render_overview(teams, order, R, n_sims, phase)),
-        "table.html": ("All teams - WC2026", render_table(teams, order, R, n_sims, phase)),
+        "index.html": ("2026 World Cup Forecast", overview),
+        "table.html": ("All teams - WC2026", table),
         "scores.html": ("Group scores - WC2026", render_scores(preds, hc, phase)),
         "knockout.html": ("Knockout scores - WC2026", render_knockout(ko_grouped, hc, phase)),
     }
@@ -807,7 +943,7 @@ def write_site(teams, order, R, n_sims, phase, preds, hc, ko_grouped, docsdir):
             f.write(_page(fname, title, body))
     # Bets: bake bets.json if present; else only write a placeholder if no page exists yet
     # (so a CI run without bets.json never clobbers a previously committed bets page).
-    bets_body = render_bets()
+    bets_body = render_bets(final=bool(champion))
     bets_path = os.path.join(docsdir, "bets.html")
     if bets_body is not None:
         with open(bets_path, "w", encoding="utf-8") as f:
@@ -838,6 +974,7 @@ if __name__ == "__main__":
     azteca_group = next((i for i, g in enumerate(groups) if "Mexico" in g), None) \
         if A_azteca is not None else None
 
+    champion = None                                      # set once the final has been played
     if len(kdf) == 0:                                    # group stage in progress / just done
         base = base_stats(gdf, tidx)
         fcity = fixture_cities(df)
@@ -867,28 +1004,41 @@ if __name__ == "__main__":
         qidx = [tidx[t] for t in qual]
         alive = [tidx[t] for t in qual if t not in elim]
         R = simulate_knockouts(qidx, alive, A)
-        phase = f"Knockouts - {len(kdf)} games played, {len(alive)} teams alive"
+        # One team left unbeaten = the final has been played, so there is nothing left to
+        # forecast; the site switches to its finished-tournament pages.
+        champion = teams[alive[0]] if len(alive) == 1 else None
+        phase = (f"Tournament complete - {champion} champions" if champion else
+                 f"Knockouts - {len(kdf)} games played, {len(alive)} teams alive")
 
     order = sorted(range(len(teams)), key=lambda i: R["champ"][i], reverse=True)
     print(phase)
-    print(f"\n  {'team':<18}{'qualify':>8}{'champ':>8}{'final':>8}")
-    for i in order[:16]:
-        q = R["qualify"][i] / N_SIMS; c = R["champ"][i] / N_SIMS; f_ = R["final"][i] / N_SIMS
-        print(f"  {teams[i]:<18}{q:>7.0%}{c:>8.1%}{f_:>8.1%}")
-
-    pct = lambda c, i: f"{c[i] / N_SIMS:.1%}"
-    lines = ["# 2026 World Cup forecast", "", f"_{phase}_", "",
-             "| Team | Qualify | Champion | Final | Semi | R16 |", "|---|---|---|---|---|---|"]
-    for i in order:
-        lines.append(f"| {teams[i]} | {pct(R['qualify'],i)} | {pct(R['champ'],i)} | "
-                     f"{pct(R['final'],i)} | {pct(R['sf'],i)} | {pct(R['r16'],i)} |")
-    with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as fh:
-        fh.write("\n".join(lines) + "\n")
     preds = update_and_grade(m, zmap, confmap, rem, gdf, groups)
     hc = hindcast(df, wcdf)
     ko_grouped = update_and_grade_knockout(m, zmap, confmap, df, wcdf)
+
+    if champion:            # nothing left to forecast -> report where everyone finished
+        place, _ = final_standings(ko_grouped, teams)
+        ranked = sorted(teams, key=lambda t: (PLACE_RANK.get(place[t], 9), t))
+        print(f"\n  {'team':<18}finished")
+        for t in ranked[:8]:
+            print(f"  {t:<18}{place[t]}")
+        lines = ["# 2026 World Cup - final standings", "", f"_{phase}_", "",
+                 "| Team | Finished |", "|---|---|"]
+        lines += [f"| {t} | {place[t]} |" for t in ranked]
+    else:
+        pct = lambda c, i: f"{c[i] / N_SIMS:.1%}"
+        print(f"\n  {'team':<18}{'qualify':>8}{'champ':>8}{'final':>8}")
+        for i in order[:16]:
+            q = R["qualify"][i] / N_SIMS; c = R["champ"][i] / N_SIMS; f_ = R["final"][i] / N_SIMS
+            print(f"  {teams[i]:<18}{q:>7.0%}{c:>8.1%}{f_:>8.1%}")
+        lines = ["# 2026 World Cup forecast", "", f"_{phase}_", "",
+                 "| Team | Qualify | Champion | Final | Semi | R16 |", "|---|---|---|---|---|---|"]
+        lines += [f"| {teams[i]} | {pct(R['qualify'],i)} | {pct(R['champ'],i)} | "
+                  f"{pct(R['final'],i)} | {pct(R['sf'],i)} | {pct(R['r16'],i)} |" for i in order]
+    with open(os.path.join(os.path.dirname(__file__), "forecast.md"), "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
     write_site(teams, order, R, N_SIMS, phase, preds, hc, ko_grouped,
-               os.path.join(os.path.dirname(__file__), "docs"))
+               os.path.join(os.path.dirname(__file__), "docs"), champion=champion)
 
     assert abs(sum(R["champ"].values()) - N_SIMS) < 1
     print(f"\nwrote forecast.md + docs/ (overview, table, group, knockout, bets) | {phase}")

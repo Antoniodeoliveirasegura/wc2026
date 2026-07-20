@@ -1,54 +1,54 @@
-# 2026 World Cup forecast
+# 2026 World Cup - final standings
 
-_Knockouts - 32 games played, 1 teams alive_
+_Tournament complete - Spain champions_
 
-| Team | Qualify | Champion | Final | Semi | R16 |
-|---|---|---|---|---|---|
-| Spain | 100.0% | 100.0% | 0.0% | 0.0% | 0.0% |
-| Algeria | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Argentina | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Australia | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Austria | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Belgium | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Bosnia and Herzegovina | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Brazil | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Canada | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Cape Verde | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Colombia | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Croatia | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Curaçao | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Czech Republic | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| DR Congo | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Ecuador | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Egypt | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| England | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| France | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Germany | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Ghana | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Haiti | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Iran | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Iraq | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Ivory Coast | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Japan | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Jordan | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Mexico | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Morocco | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Netherlands | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| New Zealand | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Norway | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Panama | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Paraguay | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Portugal | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Qatar | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Saudi Arabia | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Scotland | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Senegal | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| South Africa | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| South Korea | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Sweden | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Switzerland | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Tunisia | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Turkey | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| United States | 100.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Uruguay | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
-| Uzbekistan | 0.0% | 0.0% | 0.0% | 0.0% | 0.0% |
+| Team | Finished |
+|---|---|
+| Spain | Champions |
+| Argentina | Runners-up |
+| England | Third place |
+| France | Fourth place |
+| Belgium | Quarter-finals |
+| Morocco | Quarter-finals |
+| Norway | Quarter-finals |
+| Switzerland | Quarter-finals |
+| Brazil | Round of 16 |
+| Canada | Round of 16 |
+| Colombia | Round of 16 |
+| Egypt | Round of 16 |
+| Mexico | Round of 16 |
+| Paraguay | Round of 16 |
+| Portugal | Round of 16 |
+| United States | Round of 16 |
+| Algeria | Round of 32 |
+| Australia | Round of 32 |
+| Austria | Round of 32 |
+| Bosnia and Herzegovina | Round of 32 |
+| Cape Verde | Round of 32 |
+| Croatia | Round of 32 |
+| DR Congo | Round of 32 |
+| Ecuador | Round of 32 |
+| Germany | Round of 32 |
+| Ghana | Round of 32 |
+| Ivory Coast | Round of 32 |
+| Japan | Round of 32 |
+| Netherlands | Round of 32 |
+| Senegal | Round of 32 |
+| South Africa | Round of 32 |
+| Sweden | Round of 32 |
+| Curaçao | Group stage |
+| Czech Republic | Group stage |
+| Haiti | Group stage |
+| Iran | Group stage |
+| Iraq | Group stage |
+| Jordan | Group stage |
+| New Zealand | Group stage |
+| Panama | Group stage |
+| Qatar | Group stage |
+| Saudi Arabia | Group stage |
+| Scotland | Group stage |
+| South Korea | Group stage |
+| Tunisia | Group stage |
+| Turkey | Group stage |
+| Uruguay | Group stage |
+| Uzbekistan | Group stage |
